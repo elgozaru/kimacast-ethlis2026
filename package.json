@@ -1,0 +1,11 @@
+{
+  "name": "kimacast-ethlis2026",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev:facilitator": "pnpm --filter facilitator dev",
+    "dev:resource-server": "pnpm --filter resource-server dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev": "pnpm --parallel --filter facilitator --filter resource-server --filter web dev"
+  }
+}
