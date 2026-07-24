@@ -64,12 +64,25 @@ local/dry-run behavior when credentials are absent, so `npm run dev` works
 immediately in a sandbox with zero keys, and you can wire in real
 credentials for one integration at a time.
 
-See `content/sample-instagram-posts.md` for 10 example posts in the exact
-shape this pipeline produces (hook, free teaser, paywalled body, price,
-hashtags) — built from BBC News' evergreen coverage pillars, since this
-sandbox's outbound network blocks bbc.com/bbc.co.uk directly. Point
-`SOURCE_URL` at a live BBC RSS/API endpoint from a deployment with normal
-network access and the same code fills the template with real headlines.
+See `content/` for example post sets in the exact shape this pipeline
+produces (hook, free teaser, paywalled body, price, hashtags):
+
+- `sample-instagram-posts.md` — 10 BBC News posts. Illustrative: this
+  sandbox's network policy blocks bbc.com/bbc.co.uk directly.
+- `sample-instagram-posts-fifa-world-cup.md` — 10 Wikipedia/FIFA World
+  Cup posts. Built from well-established history: the fetch to
+  en.wikipedia.org hit the sandbox's general network policy (it blocks
+  live fetching of arbitrary external sites, not just BBC).
+- `sample-instagram-posts-arbredespossibles.md` — 20 illustrative,
+  comic-styled posts (superseded, kept for reference).
+- `sample-instagram-posts-arbredespossibles-real.md` — 20 comic-styled
+  posts grounded in the real page content, sourced from a PDF snapshot
+  the user supplied of arbredespossibles.com/FutursTechno3.html once live
+  fetching proved impossible.
+
+Point `SOURCE_URL` at a live, reachable source from a deployment with
+normal network access and the same code fills the template with real,
+freshly-fetched content instead.
 
 ## Layout
 

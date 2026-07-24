@@ -1,5 +1,10 @@
 # Story402 x L'Arbre des Possibles — 20 Comic-Styled Instagram Posts
 
+> **Superseded:** a real snapshot of this site's content later became
+> available (see `sample-instagram-posts-arbredespossibles-real.md`),
+> which grounds 20 posts in the actual page content instead of the
+> illustrative vignettes below. Kept here for reference only.
+
 > **Note on sourcing:** `arbredespossibles.com` (and mirrors of it, e.g.
 > Pearltrees) return `403 Forbidden` to every fetch attempt in this sandbox
 > — the site itself, not a proxy policy. Web search confirms what the site
