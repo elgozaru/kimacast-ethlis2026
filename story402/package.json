@@ -1,0 +1,31 @@
+{
+  "name": "story402",
+  "version": "0.1.0",
+  "description": "Story402 - a content monetization agent that turns web articles into half-free/half-paid social posts, storing paid content on 0G Storage, generating with 0G Compute, and gating access with x402 micropayments settled over Hedera, funded via Privy/ZeroDev smart wallets topped up with Apple/Google Pay.",
+  "private": true,
+  "type": "module",
+  "main": "dist/agent/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/agent/index.js",
+    "dev": "tsx src/agent/index.ts",
+    "generate": "tsx src/agent/index.ts --source https://www.bbc.com/news --count 10",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "@0gfoundation/0g-compute-ts-sdk": "^0.9.0",
+    "@0gfoundation/0g-storage-ts-sdk": "^1.2.10",
+    "@hashgraph/sdk": "^2.53.0",
+    "@privy-io/server-auth": "^1.18.0",
+    "@zerodev/sdk": "^5.4.0",
+    "dotenv": "^16.4.5",
+    "ethers": "6.13.1",
+    "x402": "^0.3.0",
+    "x402-express": "^0.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
