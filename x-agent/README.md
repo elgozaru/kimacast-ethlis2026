@@ -69,6 +69,32 @@ Since posting is public and hard to undo, do a dry run first (leave the `.env`
 X fields blank) to confirm the exact text, then fill in credentials only when
 you're ready to actually publish.
 
+### Troubleshooting a 401 Unauthorized
+
+A `401` from `twitter-api-v2` (as opposed to a `403`) means the four
+credentials themselves don't line up - it's an authentication problem, not
+a permissions one. Run:
+
+```bash
+node check-credentials.js
+```
+
+This checks the *shape* of each of the four `X_*` values (length, stray
+whitespace/newlines/quotes) without ever printing the actual secrets, which
+catches the most common copy-paste mistakes. If it reports everything as
+`[OK]` and you're still getting 401, check, in order:
+
+1. **Mismatched pair** - the Access Token/Secret must come from the *same*
+   App as the Consumer Key/Secret. Regenerating one and not the other is
+   the most common cause.
+2. **Regenerated in the wrong order** - Access Token/Secret must be
+   (re)generated *after* setting App permissions to "Read and write," not
+   before.
+3. **App not attached to a Project** - in the X Developer Portal, confirm
+   the App sits under a Project (required for v2 endpoints).
+4. **Container clock skew** - OAuth1.0a signs requests with a timestamp;
+   run `date -u` and confirm the Codespace's clock is actually correct.
+
 ## Credentials
 
 **Do not paste real API keys into chat, commits, or anywhere outside your
