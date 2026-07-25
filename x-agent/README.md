@@ -51,6 +51,23 @@ echo "Your tweet text here" > my-post.txt
 node post-text.js --file ./my-post.txt
 ```
 
+### Forcing a dry run
+
+Both `index.js` and `post-text.js` fall back to a dry run automatically
+when `.env` has no X credentials - but if credentials *are* configured
+(e.g. you have valid keys, just an exhausted API credit allowance - see
+"credits depleted" below) and you still want to test the rest of the
+pipeline without attempting a real post, pass `--dry-run` explicitly:
+
+```bash
+node post-text.js --text "..." --dry-run
+node index.js --url https://example.com --dry-run
+```
+
+This skips the real `twitter-api-v2` call entirely (so it never counts
+against rate limits or API credits) while still exercising research,
+content drafting, and the 0G Storage writes.
+
 ### Doing this from a GitHub Codespace
 
 1. Open this repo in a Codespace (or open the existing one).
@@ -94,6 +111,17 @@ catches the most common copy-paste mistakes. If it reports everything as
    the App sits under a Project (required for v2 endpoints).
 4. **Container clock skew** - OAuth1.0a signs requests with a timestamp;
    run `date -u` and confirm the Codespace's clock is actually correct.
+
+### Troubleshooting a 402 Payment Required ("credits depleted")
+
+This comes straight from `api.x.com` (`type:
+'https://api.x.com/2/problems/credits-depleted'`) - it's X's own commercial
+API billing, unrelated to this project's own x402/Hedera payment flow in
+`apps/facilitator`. It means your Developer account's plan has used up its
+posting allowance for the current billing period. Check the X Developer
+Portal's Project dashboard for your plan and reset date. In the meantime,
+use `--dry-run` (see above) to keep testing everything except the real
+post - it doesn't touch the X API at all, so it can't be blocked by this.
 
 ## Credentials
 
