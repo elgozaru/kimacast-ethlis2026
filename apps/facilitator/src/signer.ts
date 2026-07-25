@@ -1,11 +1,19 @@
-import { PrivateKey } from "@hiero-ledger/sdk";
 import {
+  PrivateKey,
   createHederaClient,
   createHederaPreflightTransfer,
   createHederaSignAndSubmitTransaction,
   createHederaVerifyPayerSignature,
   toFacilitatorHederaSigner,
 } from "@x402/hedera";
+// PrivateKey comes from @x402/hedera's own re-export, not a direct
+// @hiero-ledger/sdk dependency: @x402/hedera pins its own copy of the SDK
+// internally, and passing a PrivateKey built from a *different* installed
+// copy into that pinned copy's Client.setOperator() trips the SDK's
+// instanceof/string-brand checks at runtime ("t.startsWith is not a
+// function") — see the "Hedera SDK primitives" section of the @x402/hedera
+// README. Always resolve Hedera SDK classes through @x402/hedera when a
+// @x402/hedera value (like the Client from createHederaClient) is involved.
 
 const feePayerAccountId = requireEnv("HEDERA_FACILITATOR_ACCOUNT_ID");
 const feePayerKey = PrivateKey.fromStringECDSA(requireEnv("HEDERA_FACILITATOR_PRIVATE_KEY"));
