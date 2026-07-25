@@ -2,8 +2,7 @@ import { x402Client } from "@x402/core/client";
 import { x402HTTPClient } from "@x402/core/http";
 import { ExactHederaScheme } from "@x402/hedera/exact/client";
 import type { PrivyHederaSigner } from "./hedera-privy-signer";
-
-const RESOURCE_SERVER_URL = process.env.NEXT_PUBLIC_RESOURCE_SERVER_URL ?? "http://localhost:4000";
+import { resourceServerUrl } from "./resource-server-url";
 
 /**
  * One 402 round trip: request the gated route, and if the server asks for
@@ -16,7 +15,7 @@ export async function unlockStory(postId: string, signer: PrivyHederaSigner) {
   const coreClient = new x402Client().register("hedera:*", new ExactHederaScheme(signer));
   const client = new x402HTTPClient(coreClient);
 
-  const url = `${RESOURCE_SERVER_URL}/api/stories/${postId}/full`;
+  const url = `${resourceServerUrl()}/api/stories/${postId}/full`;
   const first = await fetch(url);
   if (first.status !== 402) {
     return first.json();
