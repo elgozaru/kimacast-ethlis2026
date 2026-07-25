@@ -190,6 +190,27 @@ pnpm dev:resource-server  # :4000, talks to the facilitator over HTTP
 pnpm dev:web              # :3000, visit /p/abc123
 ```
 
+**Running this in a cloud dev environment (Codespaces or similar)?** The
+page you load in your browser comes from a forwarded preview URL, e.g.
+`https://<name>-3000.app.github.dev` — not `localhost`. "localhost" typed
+into that browser tab means *your own machine*, not the container these
+three services run in, so:
+
+- Leave `NEXT_PUBLIC_RESOURCE_SERVER_URL` unset in `apps/web/.env.local` —
+  `apps/web/lib/resource-server-url.ts` auto-detects the forwarded
+  resource-server URL from the page's own hostname (swapping the `-3000`
+  port segment for `-4000`). A hardcoded `localhost:4000` here is the #1
+  cause of a confusing "CORS error" on `/p/:postId` — nothing is actually
+  listening at your own machine's port 4000, and the browser reports that
+  as a missing CORS header rather than a clearer connection failure.
+- Make sure port 4000 is set to **public** visibility in your environment's
+  ports panel. A private/default port often serves an auth interstitial
+  page to unrecognized requests instead of reaching the app, which looks
+  the same from the browser's side (no CORS headers, an unexpected body).
+- `FACILITATOR_URL` in `apps/resource-server/.env` should stay
+  `http://localhost:4021` — that traffic is server-to-server inside the
+  same container, so real `localhost` resolution is correct there.
+
 ## What's grounded vs. what's still a decision
 
 Everything in this repo — the x402 wire contracts, the Hedera signing flow,

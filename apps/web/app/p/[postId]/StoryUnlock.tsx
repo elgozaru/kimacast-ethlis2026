@@ -5,8 +5,7 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { fetchAccountState, tinybarsToHbar } from "../../../lib/hedera";
 import { PrivyHederaSigner } from "../../../lib/hedera-privy-signer";
 import { unlockStory } from "../../../lib/x402-fetch";
-
-const RESOURCE_SERVER_URL = process.env.NEXT_PUBLIC_RESOURCE_SERVER_URL ?? "http://localhost:4000";
+import { resourceServerUrl } from "../../../lib/resource-server-url";
 
 type Teaser = { id: string; teaser: string; priceTinybars: string; sourceUrl: string };
 type Stage = "idle" | "checking-balance" | "needs-funding" | "paying" | "unlocked" | "error";
@@ -25,7 +24,7 @@ export function StoryUnlock({ postId }: { postId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${RESOURCE_SERVER_URL}/api/stories/${postId}/teaser`)
+    fetch(`${resourceServerUrl()}/api/stories/${postId}/teaser`)
       .then((r) => r.json())
       .then(setTeaser);
   }, [postId]);
