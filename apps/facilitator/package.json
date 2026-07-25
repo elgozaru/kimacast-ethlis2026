@@ -9,7 +9,6 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@hiero-ledger/sdk": "^2.85.0",
     "@x402/core": "~2.19.0",
     "@x402/hedera": "~2.19.0",
     "cors": "^2.8.5",

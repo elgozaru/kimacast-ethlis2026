@@ -1,8 +1,26 @@
-import { AccountId, Hbar, TransactionId, TransferTransaction } from "@hiero-ledger/sdk";
-import { createHederaClient } from "@x402/hedera";
+// Imported through @x402/hedera's own re-exports (not a direct
+// @hiero-ledger/sdk dependency) so this file's Transaction/AccountId
+// classes are the exact same copy createHederaClient's Client is built
+// against — mixing a separately-installed @hiero-ledger/sdk copy in here
+// trips the SDK's instanceof/string-brand checks at runtime. See the
+// "Hedera SDK primitives" note in the @x402/hedera README.
+import { AccountId, Hbar, TransactionId, TransferTransaction, createHederaClient } from "@x402/hedera";
 import type { PaymentRequirements } from "@x402/core/types";
 import { hederaAliasFromEvmAddress } from "./hedera";
 import { bytesToBase64 } from "./base64";
+
+/**
+ * A well-known Hedera council node, present on both networks, used as the
+ * transaction's sole node account id. Pinning to exactly one node (instead
+ * of letting the SDK fan out to every node on the network) keeps this to a
+ * single signed transaction, which is what makes the simple
+ * `Transaction.addSignature(publicKey, signatureBytes)` API usable in
+ * app/api/hedera/sign/route.ts — that call requires the signature array to
+ * match the transaction count 1:1. Production code that wants resilience
+ * against one node being briefly down should round-robin a small pool
+ * instead of hardcoding "0.0.3".
+ */
+const SINGLE_NODE_ACCOUNT_ID = "0.0.3";
 
 /**
  * Implements @x402/hedera's `ClientHederaSigner` interface
@@ -34,8 +52,9 @@ export class PrivyHederaSigner {
     const client = createHederaClient(requirements.network);
     const unsigned = new TransferTransaction()
       .setTransactionId(TransactionId.generate(AccountId.fromString(feePayer)))
-      .addHbarTransfer(this.accountId, Hbar.fromTinybars(-BigInt(requirements.amount)))
-      .addHbarTransfer(requirements.payTo, Hbar.fromTinybars(BigInt(requirements.amount)))
+      .setNodeAccountIds([AccountId.fromString(SINGLE_NODE_ACCOUNT_ID)])
+      .addHbarTransfer(this.accountId, Hbar.fromTinybars((-BigInt(requirements.amount)).toString()))
+      .addHbarTransfer(requirements.payTo, Hbar.fromTinybars(requirements.amount))
       .freezeWith(client);
 
     const unsignedBase64 = bytesToBase64(unsigned.toBytes());
@@ -44,10 +63,10 @@ export class PrivyHederaSigner {
     // this app's Privy secret — see app/api/hedera/sign/route.ts. Privy's
     // embedded-wallet browser SDK exposes an EIP-1193 provider
     // (personal_sign / eth_signTypedData), but those both hash an
-    // Ethereum-prefixed message; Hedera needs a signature over the raw
-    // transaction body bytes (HIP-179 / HIP-19204), so this goes through
-    // Privy's raw-signing capability instead, which today is a
-    // server-authenticated call.
+    // Ethereum-prefixed message; Hedera needs a signature over the raw,
+    // un-prefixed transaction body bytes (HIP-179), so this goes through
+    // Privy's `walletApi.ethereum.secp256k1Sign` primitive instead, which is
+    // a server-authenticated call (see @privy-io/server-auth).
     const res = await fetch("/api/hedera/sign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

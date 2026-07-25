@@ -7,50 +7,83 @@ const privy = new PrivyClient(process.env.PRIVY_APP_ID!, process.env.PRIVY_APP_S
 
 /**
  * Server-side counterpart of lib/hedera-privy-signer.ts. Takes the frozen,
- * unsigned transaction bytes the browser built, adds the viewer's
- * authorization signature via Privy's server Wallet API, and hands the
- * partially-signed transaction back so the browser can attach it as the
- * `X-PAYMENT` header. This runs with this app's Privy *app secret* — never
- * ship that to the client.
+ * single-node, unsigned transaction bytes the browser built, adds the
+ * viewer's authorization signature via Privy's server Wallet API, and hands
+ * the partially-signed transaction back so the browser can attach it as the
+ * `X-PAYMENT` header. Runs with this app's Privy *app secret* — never ship
+ * that to the client.
  *
- * VERIFY BEFORE SHIPPING: the exact Privy Wallet API RPC method for a raw
- * secp256k1 digest signature (as opposed to personal_sign/eth_signTypedData)
- * may have a different name/shape than `secp256k1_sign` below — confirm
- * against Privy's current Wallet API reference for embedded EVM wallets.
- * Similarly, `Transaction.signWithSigner`'s `Signer` interface should be
- * checked against the installed `@hiero-ledger/sdk` version; the object
- * below implements the subset that a single-key HBAR transfer needs.
+ * This intentionally does NOT use `Transaction.signWithSigner`, which needs
+ * a full `@hiero-ledger/sdk` `Signer` implementation (getAccountId,
+ * getAccountKey, getNetwork, getLedgerId, getMirrorNetwork, sign,
+ * getAccountBalance, getAccountInfo, getAccountRecords, signTransaction,
+ * checkTransaction, populateTransaction, call — all required, most
+ * irrelevant here). Instead this uses the lower-level
+ * `Transaction.addSignature(publicKey, signatureBytes)`, the same primitive
+ * every external Hedera wallet integration (HashPack, WalletConnect) uses:
+ * read the exact bytes Hedera wants signed off `signableNodeBodyBytesList`,
+ * sign them, inject the raw signature. Confirmed against the installed
+ * `@hiero-ledger/sdk@2.85.0` and `@hiero-ledger/cryptography@1.19.0` source
+ * (see `primitive/ecdsa.js`'s `sign()`): an ECDSA(secp256k1) signature on
+ * Hedera is the 64-byte compact (r, s) pair over `keccak256(bodyBytes)` —
+ * exactly what HIP-179 specifies, and exactly what
+ * `privy.walletApi.ethereum.secp256k1Sign` is built to produce.
+ *
+ * lib/hedera-privy-signer.ts pins the transaction to a single node account
+ * id before freezing, so `signableNodeBodyBytesList` always has exactly one
+ * entry and `addSignature`'s single-`Uint8Array` form applies directly.
  */
 export async function POST(req: NextRequest) {
   const { walletId, transaction } = (await req.json()) as { walletId: string; transaction: string };
 
   const wallet = await privy.walletApi.getWallet({ id: walletId });
+  // Privy returns the embedded wallet's compressed secp256k1 public key as a
+  // hex string (optionally 0x-prefixed) — the exact format
+  // PublicKey.fromStringECDSA expects.
   const publicKey = PublicKey.fromStringECDSA(wallet.publicKey!);
 
-  const tx = Transaction.fromBytes(Buffer.from(transaction, "base64"));
+  const tx = Transaction.fromBytes(base64ToBytes(transaction));
 
-  await tx.signWithSigner({
-    getAccountId: () => undefined,
-    getAccountKey: () => publicKey,
-    getNetwork: () => ({}),
-    getLedgerId: () => undefined,
-    getMirrorNetwork: () => [],
-    async sign(messages: Uint8Array[]) {
-      return Promise.all(
-        messages.map(async (bodyBytes) => {
-          // HIP-179: ECDSA signatures are computed over keccak256(bodyBytes),
-          // and the wire format is the raw 64-byte (r, s) pair.
-          const digest = keccak256(bodyBytes).slice(2);
-          const { signature } = await privy.walletApi.rpc({
-            walletId,
-            method: "secp256k1_sign",
-            params: { hash: `0x${digest}` },
-          } as any);
-          return { accountId: undefined, publicKey, signature: Buffer.from(signature.slice(2), "hex") };
-        }),
-      );
-    },
-  } as any);
+  const [signable, ...rest] = tx.signableNodeBodyBytesList;
+  if (!signable || rest.length > 0) {
+    throw new Error(
+      `Expected exactly one signable transaction body (got ${tx.signableNodeBodyBytesList.length}) — did the caller set a single node account id before freezing?`,
+    );
+  }
 
-  return NextResponse.json({ transaction: Buffer.from(tx.toBytes()).toString("base64") });
+  const digest = keccak256(signable.signableTransactionBodyBytes); // 0x-prefixed keccak256(bodyBytes)
+  const { signature } = await privy.walletApi.ethereum.secp256k1Sign({
+    walletId,
+    hash: digest as `0x${string}`,
+  });
+
+  const signatureBytes = hexToBytes(signature);
+  // Hedera wants exactly the 64-byte (r, s) pair; drop a trailing recovery
+  // byte if Privy includes one (some secp256k1 signing APIs return 65
+  // bytes, Ethereum-style).
+  const compactSignature =
+    signatureBytes.length === 65
+      ? signatureBytes.slice(0, 64)
+      : signatureBytes.length === 64
+        ? signatureBytes
+        : (() => {
+            throw new Error(`Unexpected secp256k1 signature length ${signatureBytes.length}, expected 64 or 65`);
+          })();
+
+  tx.addSignature(publicKey, compactSignature);
+
+  return NextResponse.json({ transaction: bytesToBase64(tx.toBytes()) });
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  return new Uint8Array(Buffer.from(base64, "base64"));
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64");
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  return new Uint8Array(Buffer.from(clean, "hex"));
 }

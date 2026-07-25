@@ -1,4 +1,6 @@
-import { AccountId } from "@hiero-ledger/sdk";
+// Via @x402/hedera's re-export, not a direct @hiero-ledger/sdk dependency —
+// see the note in lib/hedera-privy-signer.ts on why that matters.
+import { AccountId } from "@x402/hedera";
 
 const MIRROR_NODE_URL =
   process.env.NEXT_PUBLIC_HEDERA_NETWORK === "hedera:mainnet"

@@ -126,12 +126,30 @@ Ethereum RPC provider (Alchemy, Infura, etc.) — it's a read-only lookup.
 4. Copy the App ID into `NEXT_PUBLIC_PRIVY_APP_ID` / `PRIVY_APP_ID`, and
    generate an **App Secret** (Settings → API Keys) for `PRIVY_APP_SECRET` —
    this is only ever used server-side, in `app/api/hedera/sign`.
-5. **Verify the raw-signing call.** `app/api/hedera/sign/route.ts` needs a
-   Privy Wallet API method that returns a raw secp256k1 signature over an
-   arbitrary digest (the same primitive Privy's Bitcoin PSBT-signing support
-   uses) — confirm the exact method name/params against Privy's current
-   Wallet API reference before relying on the `secp256k1_sign` call stubbed
-   in that file.
+
+The raw-signing step (`app/api/hedera/sign/route.ts`) is implemented against
+`privy.walletApi.ethereum.secp256k1Sign({ walletId, hash })` from
+`@privy-io/server-auth@1.32.5`'s real type definitions (fetched and
+inspected from npm, not guessed) — that method exists specifically to sign
+an arbitrary digest, as opposed to `signMessage`/`signTypedData` which both
+hash an Ethereum-prefixed message. On the Hedera side, the route uses
+`Transaction.addSignature(publicKey, signatureBytes)` rather than
+`Transaction.signWithSigner()` — the latter requires implementing the full
+`@hiero-ledger/sdk` `Signer` interface (11 methods, only one of which is
+relevant here); `addSignature` is the same lower-level primitive real Hedera
+wallet integrations (HashPack, WalletConnect) use to inject an
+externally-produced signature into an already-frozen transaction. Both the
+digest format (`keccak256(bodyBytes)`, 64-byte compact `(r, s)`, per
+HIP-179) and the `signableNodeBodyBytesList` API used to obtain those bytes
+were confirmed against the installed `@hiero-ledger/sdk@2.85.0` and
+`@hiero-ledger/cryptography@1.19.0` source.
+
+One thing worth knowing about this design: `lib/hedera-privy-signer.ts`
+pins the transaction to a single node account id (`0.0.3`) before freezing.
+That's what keeps `signableNodeBodyBytesList` down to exactly one entry, so
+`addSignature`'s plain-`Uint8Array` form applies without ambiguity. A
+production version that wants resilience against that one node being
+briefly unavailable should round-robin a small pool of node ids instead.
 
 ### 4. Funding the viewer's account (the open gap)
 
@@ -172,16 +190,35 @@ pnpm dev:resource-server  # :4000, talks to the facilitator over HTTP
 pnpm dev:web              # :3000, visit /p/abc123
 ```
 
-## Known verification TODOs
+## What's grounded vs. what's still a decision
 
-Everything above is grounded against the real `@x402/core` / `@x402/hedera`
-packages (fetched and inspected from the npm registry while building this),
-Hedera's public HIPs, and Hedera's own x402 announcement. Two seams are
-flagged inline in code because they depend on SDK/API surfaces that
-couldn't be fully confirmed in this session and should be pinned against
-current docs before shipping:
+Everything in this repo — the x402 wire contracts, the Hedera signing flow,
+the Privy raw-signing call — is verified against the real installed
+packages (`pnpm install` + reading the actual `.d.ts`/source under
+`node_modules`, plus `tsc --noEmit` passing clean in all three apps), not
+guessed from memory. Two things remain genuine *decisions* rather than
+verification gaps:
 
-- `app/api/hedera/sign/route.ts` — exact Privy raw-signing RPC method name.
-- The same file's `Signer` object passed to `Transaction.signWithSigner` —
-  confirm the interface shape against your installed `@hiero-ledger/sdk`
-  version.
+- **Onramp provider** (see step 4 above): which provider, and whether it's
+  Path A (direct Hedera delivery, if you find one) or Path B (Base-USDC +
+  treasury float). This is a business/vendor choice, not something to
+  resolve in code without picking one.
+- **Node account id resilience**: the single hardcoded `"0.0.3"` in
+  `lib/hedera-privy-signer.ts` is fine for development; production should
+  round-robin or fail over across a small pool of node ids.
+
+### Duplicate `@hiero-ledger/sdk` installs
+
+`@x402/hedera` bundles its own pinned copy of `@hiero-ledger/sdk`. Any file
+that both (a) uses a `Client`/`Transaction`/etc. obtained from `@x402/hedera`
+(e.g. `createHederaClient`) *and* (b) constructs Hedera SDK objects from a
+separately-resolved direct `@hiero-ledger/sdk` dependency will hit runtime
+errors like `t.startsWith is not a function`, because the SDK's internal
+class-identity checks don't recognize objects from the "other" copy. This
+bit both `apps/facilitator/src/signer.ts` (fixed by importing `PrivateKey`
+from `@x402/hedera` instead of `@hiero-ledger/sdk`, and dropping the direct
+dependency) and `apps/web/lib/hedera-privy-signer.ts` (fixed the same way,
+plus pinning `apps/web`'s remaining direct `@hiero-ledger/sdk` dependency —
+still needed for `PublicKey`, which `@x402/hedera` doesn't re-export — to
+the exact version `@x402/hedera` depends on). If you bump `@x402/hedera`,
+re-check this pin.

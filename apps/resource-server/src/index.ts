@@ -31,7 +31,7 @@ const routes: RoutesConfig = {
     mimeType: "application/json",
     accepts: {
       scheme: "exact",
-      network,
+      network: network as `hedera:${string}`,
       // payTo and price are resolved per-request from the postId in the path,
       // since every story is priced individually and paid to a different
       // agent's Hedera account (resolved through that agent's ENS name).
