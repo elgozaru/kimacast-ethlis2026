@@ -13,7 +13,7 @@ import { publishTweet, getTweetMetrics } from "./twitter.js";
  *        -> Analytics Agent  (twitter.js: getTweetMetrics)
  *        -> 0G Storage       (storage.js: writeMemory)     [shared agent memory]
  */
-async function runPipeline(url) {
+async function runPipeline(url, { dryRun = false } = {}) {
   console.log(`Research Agent: analyzing ${url}`);
   const findings = await research(url);
   const findingsMemory = await writeMemory("research", findings);
@@ -27,11 +27,15 @@ async function runPipeline(url) {
 
   console.log("Publishing Agent: posting to X");
   const postText = `${draft.text}\n\n${url}`.slice(0, 280);
-  const published = await publishTweet(postText);
-  console.log(published.posted ? `  -> posted, tweet id ${published.id}` : `  -> dry-run (no X credentials configured)`);
+  const published = await publishTweet(postText, { dryRun });
+  if (published.posted) {
+    console.log(`  -> posted, tweet id ${published.id}`);
+  } else {
+    console.log(dryRun ? "  -> dry-run (--dry-run passed)" : "  -> dry-run (no X credentials configured)");
+  }
 
   console.log("Analytics Agent: fetching engagement metrics");
-  const metrics = await getTweetMetrics(published.id);
+  const metrics = await getTweetMetrics(published.id, { dryRun });
   const analyticsMemory = await writeMemory("analytics", { ...metrics, url, postText });
   console.log(`  -> stored analytics at ${analyticsMemory.uri}`);
 
@@ -42,8 +46,14 @@ function parseArgs(argv) {
   const args = new Map();
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i].startsWith("--")) {
-      args.set(argv[i].slice(2), argv[i + 1]);
-      i += 1;
+      const key = argv[i].slice(2);
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith("--")) {
+        args.set(key, next);
+        i += 1;
+      } else {
+        args.set(key, "true");
+      }
     }
   }
   return args;
@@ -52,9 +62,9 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const url = args.get("url") ?? process.env.SOURCE_URL;
-  if (!url) throw new Error("Usage: node index.js --url <website> (or set SOURCE_URL in .env)");
+  if (!url) throw new Error("Usage: node index.js --url <website> (or set SOURCE_URL in .env) [--dry-run]");
 
-  const result = await runPipeline(url);
+  const result = await runPipeline(url, { dryRun: args.has("dry-run") });
   console.log(JSON.stringify(result, null, 2));
 }
 

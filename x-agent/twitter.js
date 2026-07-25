@@ -21,12 +21,13 @@ async function getClient() {
 
 /**
  * Publishing Agent: posts to X. Falls back to a dry-run (no network call,
- * no real post) when X_* credentials aren't set - posting is a public,
- * hard-to-reverse action, so this only ever fires with real credentials
- * explicitly configured by the operator.
+ * no real post) when X_* credentials aren't set, or when `dryRun` is
+ * explicitly passed - posting is a public, hard-to-reverse action (and,
+ * depending on your X plan, a billed one), so this only ever hits the
+ * real API when credentials are configured AND dry-run wasn't requested.
  */
-export async function publishTweet(text) {
-  if (!isConfigured()) {
+export async function publishTweet(text, { dryRun = false } = {}) {
+  if (dryRun || !isConfigured()) {
     return { id: `dry-run-${Date.now()}`, text, posted: false };
   }
 
@@ -38,8 +39,8 @@ export async function publishTweet(text) {
 /**
  * Analytics Agent: pulls public metrics for a published tweet.
  */
-export async function getTweetMetrics(tweetId) {
-  if (!isConfigured() || tweetId.startsWith("dry-run-")) {
+export async function getTweetMetrics(tweetId, { dryRun = false } = {}) {
+  if (dryRun || !isConfigured() || tweetId.startsWith("dry-run-")) {
     return { tweetId, impressions: null, likes: null, retweets: null, replies: null, dryRun: true };
   }
 
