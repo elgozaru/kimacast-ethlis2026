@@ -7,6 +7,7 @@ import { ExactHederaScheme } from "@x402/hedera/exact/server";
 import type { RoutesConfig } from "@x402/core/server";
 import { getPost } from "./posts.js";
 import { resolveAgentHederaAccount } from "./ens.js";
+import { handleHederaSign } from "./hedera-sign.js";
 
 const network = process.env.HEDERA_NETWORK ?? "hedera:testnet";
 const facilitatorUrl = process.env.FACILITATOR_URL ?? "http://localhost:4021";
@@ -63,6 +64,12 @@ async function main() {
       network,
     });
   });
+
+  // Moved here from apps/web: the viewer's browser posts an unsigned Hedera
+  // transaction here to get it co-signed via Privy's server Wallet API,
+  // which needs a real server process to hold the Privy app secret — a
+  // static Vite build (apps/web) has nowhere to keep that.
+  app.post("/api/hedera/sign", handleHederaSign);
 
   app.use(paymentMiddleware(routes, resourceServer));
 

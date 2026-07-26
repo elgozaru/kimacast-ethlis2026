@@ -87,9 +87,59 @@ sequenceDiagram
   `GET /api/stories/:postId/full`, priced and paid-to per story (payTo is
   resolved from the authoring agent's ENS text record, `me.hedera.account`
   — the thin seam connecting this to the platform's ENS-identity piece).
-- `apps/web` — the Next.js page an Instagram bio/story link points at:
-  teaser → Privy login → balance check → (funding prompt) → sign & pay →
-  unlocked content, all on one screen.
+  Also hosts `POST /api/hedera/sign`, the one endpoint that needs a real
+  server to hold the Privy app secret (see "Why Vite" below).
+- `apps/web` — a Vite + React Router SPA: the page an Instagram bio/story
+  link points at. Teaser → Privy login → balance check → (funding prompt)
+  → sign & pay → unlocked content, all on one screen. `PrivyProvider` is
+  scoped to a lazily-loaded `UnlockFlow` component rather than mounted at
+  the app root, so nothing wallet-related loads until the viewer actually
+  taps Unlock.
+
+### Why Vite, not Next.js
+
+This was originally built on Next.js App Router. Two problems specific to
+that combination — not to the x402/Hedera logic itself — motivated
+switching:
+
+1. **A crash, not just slow**: `@privy-io/react-auth` pulls in
+   WalletConnect/Reown AppKit's external-wallet connector stack (unused
+   here — this app only uses Privy's embedded wallet), which pulls in
+   viem's experimental "tempo" chain and a worker-pool module that does a
+   dynamic `require()`. That's inert in a browser bundle but crashes with a
+   native worker-thread error when Next tries to server-render it in Node.
+2. **Next's dev-mode compile time for this route was minutes, not
+   milliseconds**: this dependency graph is genuinely large (~12,700
+   modules touched — WalletConnect + Reown AppKit + viem's full chain
+   list). Next's webpack-based dev server eagerly compiles the *entire*
+   reachable module graph for a route on first request, including
+   `React.lazy()`/`next/dynamic()` targets (verified: splitting Privy into
+   a lazily-loaded component did not reduce this — same ~65s, ~12,750
+   modules, either way). In a cloud dev environment, that first request
+   commonly exceeded the port-forwarding proxy's timeout, surfacing as a
+   confusing 502.
+
+Neither is fixable by reconfiguring Next.js — both are inherent to
+webpack's dev-mode strategy of bundling the whole reachable graph upfront.
+Vite's dev server instead serves ES modules on demand over native browser
+`import`, pre-bundling third-party dependencies once via esbuild (cached
+after that). Measured on this exact codebase: the initial `/p/:postId` page
+load went from **45–82 seconds** (Next, cold compile) to **~50ms** (Vite);
+even the worst case — the very first request that ever touches Privy's
+whole dependency graph, with Vite's own cache cleared — was **~1 second**,
+not a minute-plus. Subsequent requests reuse the cached pre-bundle at
+~50ms. This is also why `PrivyProvider` staying scoped to the lazily-loaded
+`UnlockFlow` component (rather than moving back to the app root) actually
+pays off here, unlike under Next: Vite's on-demand serving means that
+bundle genuinely isn't fetched until the viewer taps Unlock.
+
+This also incidentally kills a second bug for good: the CORS/"localhost
+means your own machine, not the forwarded container" class of error from
+earlier in this project's history no longer exists, because
+`vite.config.ts`'s dev proxy forwards `/api/*` to the resource-server
+server-side — the browser only ever talks to one same-origin server, in
+both dev and any production deployment that reverse-proxies
+resource-server under that same origin.
 
 ## Setup steps
 
@@ -121,13 +171,15 @@ Ethereum RPC provider (Alchemy, Infura, etc.) — it's a read-only lookup.
 1. Create an app at [dashboard.privy.io](https://dashboard.privy.io).
 2. Enable **Email**, **Google**, and **Apple** login methods.
 3. Under Embedded Wallets, set wallet creation to happen for all users on
-   login (this repo's `lib/providers.tsx` also sets `createOnLogin:
+   login (this repo's `UnlockFlow.tsx` also sets `createOnLogin:
    "all-users"` client-side).
-4. Copy the App ID into `NEXT_PUBLIC_PRIVY_APP_ID` / `PRIVY_APP_ID`, and
-   generate an **App Secret** (Settings → API Keys) for `PRIVY_APP_SECRET` —
-   this is only ever used server-side, in `app/api/hedera/sign`.
+4. Copy the App ID into `apps/web/.env.local`'s `VITE_PRIVY_APP_ID`, and
+   generate an **App Secret** (Settings → API Keys) for
+   `apps/resource-server/.env`'s `PRIVY_APP_ID` / `PRIVY_APP_SECRET` — those
+   are only ever used server-side, in `POST /api/hedera/sign`. Never put
+   the app secret in `apps/web`; a static Vite build has nowhere to keep it.
 
-The raw-signing step (`app/api/hedera/sign/route.ts`) is implemented against
+The raw-signing step (`apps/resource-server/src/hedera-sign.ts`) is implemented against
 `privy.walletApi.ethereum.secp256k1Sign({ walletId, hash })` from
 `@privy-io/server-auth@1.32.5`'s real type definitions (fetched and
 inspected from npm, not guessed) — that method exists specifically to sign
@@ -144,7 +196,7 @@ HIP-179) and the `signableNodeBodyBytesList` API used to obtain those bytes
 were confirmed against the installed `@hiero-ledger/sdk@2.85.0` and
 `@hiero-ledger/cryptography@1.19.0` source.
 
-One thing worth knowing about this design: `lib/hedera-privy-signer.ts`
+One thing worth knowing about this design: `apps/web/src/lib/hedera-privy-signer.ts`
 pins the transaction to a single node account id (`0.0.3`) before freezing.
 That's what keeps `signableNodeBodyBytesList` down to exactly one entry, so
 `addSignature`'s plain-`Uint8Array` form applies without ambiguity. A
@@ -187,29 +239,21 @@ cp apps/web/.env.example apps/web/.env.local
 
 pnpm dev:facilitator      # :4021
 pnpm dev:resource-server  # :4000, talks to the facilitator over HTTP
-pnpm dev:web              # :3000, visit /p/abc123
+pnpm dev:web              # :3000 (Vite), visit /p/abc123
 ```
 
 **Running this in a cloud dev environment (Codespaces or similar)?** The
 page you load in your browser comes from a forwarded preview URL, e.g.
-`https://<name>-3000.app.github.dev` — not `localhost`. "localhost" typed
-into that browser tab means *your own machine*, not the container these
-three services run in, so:
-
-- Leave `NEXT_PUBLIC_RESOURCE_SERVER_URL` unset in `apps/web/.env.local` —
-  `apps/web/lib/resource-server-url.ts` auto-detects the forwarded
-  resource-server URL from the page's own hostname (swapping the `-3000`
-  port segment for `-4000`). A hardcoded `localhost:4000` here is the #1
-  cause of a confusing "CORS error" on `/p/:postId` — nothing is actually
-  listening at your own machine's port 4000, and the browser reports that
-  as a missing CORS header rather than a clearer connection failure.
-- Make sure port 4000 is set to **public** visibility in your environment's
-  ports panel. A private/default port often serves an auth interstitial
-  page to unrecognized requests instead of reaching the app, which looks
-  the same from the browser's side (no CORS headers, an unexpected body).
-- `FACILITATOR_URL` in `apps/resource-server/.env` should stay
-  `http://localhost:4021` — that traffic is server-to-server inside the
-  same container, so real `localhost` resolution is correct there.
+`https://<name>-3000.app.github.dev` — not `localhost`. This no longer
+needs any special handling: `vite.config.ts`'s dev server sets
+`allowedHosts: true` (Vite 5+ otherwise rejects unrecognized `Host`
+headers as a DNS-rebinding protection) and proxies `/api/*` to
+`apps/resource-server` server-side, so the browser only ever talks to the
+one origin it's already on. Make sure port 4000 is reachable from
+*wherever `vite` itself runs* (usually just `http://localhost:4000` inside
+the same container) — it does not need to be public/forwarded to the
+outside world the way it did before, since the browser never contacts it
+directly.
 
 ## What's grounded vs. what's still a decision
 
@@ -236,10 +280,17 @@ that both (a) uses a `Client`/`Transaction`/etc. obtained from `@x402/hedera`
 separately-resolved direct `@hiero-ledger/sdk` dependency will hit runtime
 errors like `t.startsWith is not a function`, because the SDK's internal
 class-identity checks don't recognize objects from the "other" copy. This
-bit both `apps/facilitator/src/signer.ts` (fixed by importing `PrivateKey`
-from `@x402/hedera` instead of `@hiero-ledger/sdk`, and dropping the direct
-dependency) and `apps/web/lib/hedera-privy-signer.ts` (fixed the same way,
-plus pinning `apps/web`'s remaining direct `@hiero-ledger/sdk` dependency —
-still needed for `PublicKey`, which `@x402/hedera` doesn't re-export — to
-the exact version `@x402/hedera` depends on). If you bump `@x402/hedera`,
-re-check this pin.
+bit `apps/facilitator/src/signer.ts` (fixed by importing `PrivateKey` from
+`@x402/hedera` instead of `@hiero-ledger/sdk`, and dropping the direct
+dependency) and `apps/web/src/lib/hedera-privy-signer.ts` (fixed the same
+way — it only ever imports Hedera SDK primitives through `@x402/hedera`'s
+re-exports now).
+
+`apps/resource-server/src/hedera-sign.ts` (the endpoint moved here from
+`apps/web` during the Vite migration) is the one place that still carries
+a direct `@hiero-ledger/sdk` dependency, pinned to the exact version
+`@x402/hedera` depends on (`2.85.0`) — needed for `PublicKey`, which
+`@x402/hedera` doesn't re-export. This is safe because that file never
+touches a `Client`/`Transaction` obtained from `@x402/hedera`'s copy (it
+only calls `Transaction.fromBytes()` on raw bytes it receives over HTTP).
+If you bump `@x402/hedera`, re-check this pin.
