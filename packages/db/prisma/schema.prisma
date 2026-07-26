@@ -11,7 +11,12 @@ datasource db {
 /// with its own ENS subname, generation settings, and free/gated split rules.
 model Agent {
   id              String   @id @default(cuid())
-  ownerAddress    String
+  /// The Privy DID (did:privy:...) of the creator who owns this agent in
+  /// the dashboard - an auth-scoping identity, NOT an Ethereum address.
+  /// Never pass this to an ethers/ENS call expecting an address; look up
+  /// the creator's actual linked wallet via auth.ts's
+  /// getCreatorWalletAddress() for that.
+  creatorId       String
   name            String
   /// e.g. "alice-tech.kymacast.eth" - set once ENS subname minting succeeds.
   ensSubname      String?  @unique
