@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
+import { DEV_MODE } from "../lib/devMode";
 
 type Agent = {
   id: string;
@@ -27,6 +28,15 @@ export function OnboardingPage() {
   async function handleCreate() {
     setBusy(true);
     setError(null);
+    if (DEV_MODE) {
+      // No dashboard-api call at all - see lib/devMode.ts. The agent
+      // isn't "deployed" yet at this point (no ensSubname), matching the
+      // real create->deploy two-step flow below.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      setAgent({ id: "dev-mock-agent-new", name, ensSubname: null, status: "draft" });
+      setBusy(false);
+      return;
+    }
     try {
       const token = await getAccessToken();
       const created = await apiFetch<Agent>("/agents", token!, {
@@ -49,6 +59,12 @@ export function OnboardingPage() {
     if (!agent) return;
     setBusy(true);
     setError(null);
+    if (DEV_MODE) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      setAgent({ ...agent, ensSubname: `${label}.kymacast.eth`, status: "deployed" });
+      setBusy(false);
+      return;
+    }
     try {
       const token = await getAccessToken();
       const deployed = await apiFetch<Agent>(`/agents/${agent.id}/deploy`, token!, { json: { label } });
