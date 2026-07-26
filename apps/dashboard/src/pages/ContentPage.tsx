@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
+import { DEV_MODE } from "../lib/devMode";
+import { MOCK_AGENT, MOCK_GENERATIONS } from "../lib/mockData";
 
 type Agent = { id: string; name: string };
 type ContentSource = { id: string; title: string };
@@ -38,6 +40,10 @@ export function ContentPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (DEV_MODE) {
+      setAgent(MOCK_AGENT);
+      return;
+    }
     (async () => {
       const token = await getAccessToken();
       const agents = await apiFetch<Agent[]>("/agents", token!);
@@ -51,6 +57,14 @@ export function ContentPage() {
     setError(null);
     setResults([]);
     try {
+      if (DEV_MODE) {
+        // A beat of fake latency so the "Generating…" state is visible -
+        // matches what running the real 3-variant pipeline actually feels
+        // like, without needing dashboard-api at all.
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        setResults(MOCK_GENERATIONS);
+        return;
+      }
       const token = await getAccessToken();
       const source = await apiFetch<ContentSource>(`/agents/${agent.id}/sources`, token!, {
         json: { title, content },
@@ -65,6 +79,14 @@ export function ContentPage() {
   }
 
   async function createAndApprove(generationId: string) {
+    if (DEV_MODE) {
+      const generation = MOCK_GENERATIONS.find((g) => g.id === generationId)!;
+      setPostsByGeneration((prev) => ({
+        ...prev,
+        [generationId]: { id: `dev-mock-post-${generationId}`, status: "approved", teaser: generation.content.short_post },
+      }));
+      return;
+    }
     const token = await getAccessToken();
     const post = await apiFetch<Post>(`/generations/${generationId}/posts`, token!, { json: {} });
     const approved = await apiFetch<Post>(`/posts/${post.id}/approve`, token!, { json: {} });
