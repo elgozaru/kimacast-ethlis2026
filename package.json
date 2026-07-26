@@ -10,6 +10,6 @@
     "dev:dashboard": "pnpm --filter dashboard dev",
     "dev": "pnpm --parallel --filter facilitator --filter resource-server --filter web --filter dashboard-api --filter dashboard dev",
     "db:generate": "pnpm --filter @kimacast/db generate",
-    "db:migrate": "pnpm --filter @kimacast/db migrate:dev"
+    "db:migrate": "pnpm --filter @kimacast/db migrate:dev -- --name init"
   }
 }
