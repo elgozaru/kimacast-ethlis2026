@@ -27,6 +27,11 @@ model Agent {
   settings        Json
   /// Hedera account (or ENS-resolved payTo) that story payments settle to.
   hederaPayTo     String?
+  /// This agent's id in AgentRegistry.sol (packages/contracts), set once
+  /// registerAgent() succeeds during deploy - see ens/subname.ts's sibling
+  /// module, contracts/agentRegistry.ts. Not required for the platform to
+  /// function; it's a separate, independently-queryable on-chain ledger.
+  onChainAgentId  String?
   reputationScore Int      @default(0)
   status          String   @default("draft")
   createdAt       DateTime @default(now())

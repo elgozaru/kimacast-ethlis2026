@@ -347,6 +347,15 @@ can be wired in one at a time:
   1. `npx tsx apps/dashboard-api/scripts/generate-ens-operator-key.ts` — generates
      a **fresh, dedicated** key (never reuse the domain owner's personal
      wallet). Put the private key in `apps/dashboard-api/.env` only.
+- **`AGENT_REGISTRY_ADDRESS`** — optional, for the ENS sponsor bounty track
+  specifically, not required for the platform to function (subname
+  creation itself only ever needed the standard ENS Registry). See
+  `packages/contracts/README.md` to build and deploy `AgentRegistry.sol` -
+  a small on-chain ledger of registered agents (controller, ENS name,
+  metadata URI), adapted from the same pattern in
+  `elgozaru/story-agent-market`'s ENS sponsor-track submission. Without
+  it, `deploy` still mints the ENS subname as normal and just skips
+  registering on-chain.
   2. Fund that address with a small amount of Sepolia ETH for gas.
   3. From the wallet that owns the parent domain, call
      `ENSRegistry.setApprovalForAll("<operator address>", true)` on
