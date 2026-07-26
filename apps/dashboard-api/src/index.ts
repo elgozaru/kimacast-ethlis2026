@@ -6,6 +6,16 @@ import { agentsRouter } from "./routes/agents.js";
 import { contentRouter } from "./routes/content.js";
 import { postsRouter } from "./routes/posts.js";
 
+// Last-resort safety net: every route handler in routes/ wraps its own
+// logic in try/catch, but an unhandled rejection anywhere (a missed
+// try/catch in a future route, a rejection from code running outside a
+// request context) would otherwise crash the whole process per-request
+// handlers can't - taking down every other creator's in-flight request
+// too. Log and keep serving instead.
+process.on("unhandledRejection", (err) => {
+  console.error("[dashboard-api] unhandled rejection:", err);
+});
+
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "5mb" })); // pasted article text can be sizeable
