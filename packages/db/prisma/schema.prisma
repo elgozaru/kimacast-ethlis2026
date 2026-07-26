@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A deployed content-publisher agent: one creator's syndication identity,
+/// with its own ENS subname, generation settings, and free/gated split rules.
+model Agent {
+  id              String   @id @default(cuid())
+  ownerAddress    String
+  name            String
+  /// e.g. "alice-tech.kymacast.eth" - set once ENS subname minting succeeds.
+  ensSubname      String?  @unique
+  capabilities    String[]
+  /// "author-authorized" | "public-domain" | ... - who may be summarized.
+  sourcePolicy    String   @default("author-authorized")
+  /// Free-form settings: prompt tone, free/gated split criteria, price.
+  settings        Json
+  /// Hedera account (or ENS-resolved payTo) that story payments settle to.
+  hederaPayTo     String?
+  reputationScore Int      @default(0)
+  status          String   @default("draft")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sources           ContentSource[]
+  authorProfiles    AuthorProfile[]
+  generationResults GenerationResult[]
+  posts             Post[]
+}
+
+/// The author's tone/style profile used to steer generation - matches
+/// author-profile.json.
+model AuthorProfile {
+  id              String   @id @default(cuid())
+  agentId         String
+  agent           Agent    @relation(fields: [agentId], references: [id])
+  profileHash     String   @unique
+  toneDescription String
+  data            Json
+  createdAt       DateTime @default(now())
+
+  generationResults GenerationResult[]
+}
+
+/// An immutable snapshot of one piece of source content (article/PDF/RSS
+/// item) at the moment it was retrieved - matches the "immutable source
+/// snapshot" shape. Re-fetching the same canonicalUrl later and getting a
+/// different contentHash is what triggers re-evaluation.
+model ContentSource {
+  id           String   @id @default(cuid())
+  agentId      String
+  agent        Agent    @relation(fields: [agentId], references: [id])
+  author       String?
+  canonicalUrl String?
+  title        String
+  content      String   @db.Text
+  contentHash  String   @unique
+  /// 0g://<rootHash> once uploaded to 0G Storage.
+  storageUri   String?
+  retrievedAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  generationResults GenerationResult[]
+}
+
+/// One run of the generation pipeline against a ContentSource - matches
+/// both the "author configuration" and "required response object" shapes
+/// (agentId, sourceHash, authorProfileHash, outputStorageId, content,
+/// generation.{provider,model,promptVersion}).
+model GenerationResult {
+  id                String         @id @default(cuid())
+  agentId           String
+  agent             Agent          @relation(fields: [agentId], references: [id])
+  sourceId          String
+  source            ContentSource  @relation(fields: [sourceId], references: [id])
+  authorProfileId   String?
+  authorProfile     AuthorProfile? @relation(fields: [authorProfileId], references: [id])
+  sourceHash        String
+  authorProfileHash String?
+  /// 0g://<rootHash> once the result itself is uploaded to 0G Storage.
+  outputStorageId   String?
+  /// { short_post, three_post_thread, linkedin_summary, claims_used, source_url }
+  content           Json
+  provider          String
+  model             String
+  promptVersion     String
+  createdAt         DateTime       @default(now())
+
+  posts Post[]
+}
+
+/// A concrete teaser/full-story pair, gated by apps/resource-server's
+/// existing x402-over-Hedera paywall (GET /api/stories/:postId/{teaser,full}).
+/// This is the row apps/resource-server reads to serve a dashboard-created
+/// post through the same route pattern as the original hardcoded demo post.
+model Post {
+  id                 String            @id @default(cuid())
+  agentId            String
+  agent              Agent             @relation(fields: [agentId], references: [id])
+  generationResultId String?
+  generationResult   GenerationResult? @relation(fields: [generationResultId], references: [id])
+  teaser             String            @db.Text
+  full               String            @db.Text
+  priceTinybars      String
+  sourceUrl          String
+  /// "pending" | "approved" | "rejected" | "published"
+  status             String            @default("pending")
+  publishedTweetId   String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}

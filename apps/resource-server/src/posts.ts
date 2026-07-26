@@ -1,3 +1,5 @@
+import { getDb } from "@kimacast/db";
+
 export type Post = {
   id: string;
   /** ENS subdomain of the agent that authored this story; resolves to a Hedera payTo (see ens.ts). */
@@ -26,6 +28,27 @@ const posts: Record<string, Post> = {
   },
 };
 
-export function getPost(id: string): Post | undefined {
+/**
+ * Checks the shared Prisma database (populated by apps/dashboard-api once a
+ * creator approves an agent's post) first, so a dashboard-created post
+ * becomes a real x402-gated URL through this same route without any new
+ * route being needed. Falls back to the hardcoded demo map when no
+ * DATABASE_URL is configured (or the id isn't found there) - this repo's
+ * established "runs with zero extra config" convention.
+ */
+export async function getPost(id: string): Promise<Post | undefined> {
+  if (process.env.DATABASE_URL) {
+    const row = await getDb().post.findUnique({ where: { id }, include: { agent: true } });
+    if (row) {
+      return {
+        id: row.id,
+        agentEns: row.agent.ensSubname ?? "",
+        teaser: row.teaser,
+        full: row.full,
+        priceTinybars: row.priceTinybars,
+        sourceUrl: row.sourceUrl,
+      };
+    }
+  }
   return posts[id];
 }
