@@ -75,15 +75,22 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
 
   if (stage === "unlocked" && full) {
     return (
-      <>
-        <p>{full}</p>
+      <div className="card">
+        <p className="pill pill-green">Bundle unlocked</p>
+        <p style={{ marginTop: 12 }}>{full}</p>
         <a href={teaser.sourceUrl}>Visit the original source →</a>
-      </>
+      </div>
     );
   }
 
   if (!authenticated) {
-    return <button disabled>{ready ? "Signing you in…" : "Loading…"}</button>;
+    return (
+      <div className="card">
+        <button className="btn btn-orange" disabled>
+          {ready ? "Signing you in…" : "Loading…"}
+        </button>
+      </div>
+    );
   }
 
   // Wallet creation (createOnLogin: "all-users") happens right after
@@ -94,17 +101,44 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
   // that update lands (handleUnlock's embeddedWallet/embeddedWalletId
   // guard just returns early).
   if (!embeddedWallet || !embeddedWalletId) {
-    return <button disabled>Creating your wallet…</button>;
+    return (
+      <div className="card">
+        <button className="btn btn-orange" disabled>
+          Creating your wallet…
+        </button>
+      </div>
+    );
   }
 
   return (
-    <>
-      <button onClick={handleUnlock} disabled={stage === "checking-balance" || stage === "paying"}>
-        Unlock for {tinybarsToHbar(BigInt(teaser.priceTinybars))} ℏ
+    <div className="card payment-card">
+      <div className="payment-badge-row">
+        <div className="payment-badge">402</div>
+        <div>
+          <h2>Payment required</h2>
+          <p className="lede" style={{ margin: 0 }}>
+            One request. One settlement. No subscription.
+          </p>
+        </div>
+      </div>
+
+      <div className="price-display">{tinybarsToHbar(BigInt(teaser.priceTinybars))} ℏ</div>
+
+      <div className="payment-field">
+        <div className="label">Network</div>
+        <div className="value">Hedera Testnet</div>
+      </div>
+
+      <span className="pill pill-teal" style={{ marginBottom: 16 }}>
+        Facilitator sponsors network fee
+      </span>
+
+      <button className="btn btn-orange" onClick={handleUnlock} disabled={stage === "checking-balance" || stage === "paying"}>
+        {stage === "paying" ? "Signing…" : "Sign & unlock bundle"}
       </button>
 
       {stage === "needs-funding" && embeddedWallet && (
-        <div>
+        <div style={{ marginTop: 16 }}>
           <p>Your account needs a few cents of HBAR first.</p>
           {/*
             No onramp provider is wired up yet (see lib/onramp.ts and
@@ -124,8 +158,12 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
         </div>
       )}
 
-      {stage === "error" && <p role="alert">{error}</p>}
-    </>
+      {stage === "error" && (
+        <p role="alert" style={{ color: "#dc2626", marginTop: 12 }}>
+          {error}
+        </p>
+      )}
+    </div>
   );
 }
 
