@@ -55,10 +55,27 @@ export async function handleHederaSign(req: Request, res: Response) {
     }
 
     const digest = keccak256(signable.signableTransactionBodyBytes); // 0x-prefixed keccak256(bodyBytes)
-    const { signature } = await privy.walletApi.ethereum.secp256k1Sign({
+    const signResult = await privy.walletApi.ethereum.secp256k1Sign({
       walletId,
       hash: digest as `0x${string}`,
     });
+    // The SDK's secp256k1Sign() only ever returns {signature, encoding} - if
+    // Privy's API responds without a signature (e.g. this wallet's policy
+    // doesn't permit raw/arbitrary-hash signing, which is common: Privy
+    // gates "sign this exact hash" separately from personal_sign/typed-data
+    // since it's a strictly more powerful capability), the SDK silently
+    // passes that through as `signature: undefined` instead of throwing.
+    // Surface the full result so this fails loudly with something
+    // actionable instead of a bare "Cannot read properties of undefined".
+    if (!signResult?.signature) {
+      throw new Error(
+        `Privy secp256k1Sign returned no signature: ${JSON.stringify(signResult)}. ` +
+          `Check this wallet's signing policy in the Privy dashboard (Wallets -> Policies) - ` +
+          `raw secp256k1 hash signing may need to be explicitly permitted, separately from ` +
+          `personal_sign/eth_signTypedData_v4.`,
+      );
+    }
+    const { signature } = signResult;
 
     const signatureBytes = hexToBytes(signature);
     // Hedera wants exactly the 64-byte (r, s) pair; drop a trailing recovery
