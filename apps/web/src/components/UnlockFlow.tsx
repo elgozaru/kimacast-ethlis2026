@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
 import { fetchAccountState, tinybarsToHbar } from "../lib/hedera";
 import { PrivyHederaSigner } from "../lib/hedera-privy-signer";
@@ -26,9 +26,19 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
 
   // The tap that loaded this component already expressed the intent to
   // unlock, so kick off login immediately rather than making the viewer
-  // tap twice.
+  // tap twice. Guarded by a ref, not just the dependency array: Privy's
+  // `login` function is a new reference on every render of usePrivy(), so
+  // without the ref this effect re-fires on every render it causes (open
+  // the modal -> Privy's context updates -> re-render -> new `login` ->
+  // effect fires again -> ...), which React eventually kills with "Maximum
+  // update depth exceeded". The ref makes the call fire exactly once per
+  // mount regardless of how often the effect itself re-runs afterward.
+  const hasTriggeredLogin = useRef(false);
   useEffect(() => {
-    if (ready && !authenticated) login();
+    if (ready && !authenticated && !hasTriggeredLogin.current) {
+      hasTriggeredLogin.current = true;
+      login();
+    }
   }, [ready, authenticated, login]);
 
   const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
@@ -74,6 +84,17 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
 
   if (!authenticated) {
     return <button disabled>{ready ? "Signing you in…" : "Loading…"}</button>;
+  }
+
+  // Wallet creation (createOnLogin: "all-users") happens right after
+  // authentication completes, not atomically with it — useWallets()/user
+  // only pick up the new embedded wallet once Privy's SDK state updates,
+  // typically a beat later. Without this check the "Unlock" button below
+  // renders immediately post-auth and silently does nothing on tap until
+  // that update lands (handleUnlock's embeddedWallet/embeddedWalletId
+  // guard just returns early).
+  if (!embeddedWallet || !embeddedWalletId) {
+    return <button disabled>Creating your wallet…</button>;
   }
 
   return (
