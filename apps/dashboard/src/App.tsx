@@ -5,13 +5,16 @@ import { OnboardingPage } from "./pages/OnboardingPage";
 import { AgentOverviewPage } from "./pages/AgentOverviewPage";
 import { ContentPage } from "./pages/ContentPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { DEV_MODE } from "./lib/devMode";
 
 export function App() {
   const { ready, authenticated, login } = usePrivy();
 
-  if (!ready) return null;
+  // DEV_MODE skips Privy login entirely (as well as every dashboard-api
+  // call, inside each page) - see lib/devMode.ts and lib/mockData.ts.
+  if (!DEV_MODE && !ready) return null;
 
-  if (!authenticated) {
+  if (!DEV_MODE && !authenticated) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}>
         <div className="card" style={{ textAlign: "center", maxWidth: 360 }}>

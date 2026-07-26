@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
+import { DEV_MODE } from "../lib/devMode";
+import { MOCK_AGENT, MOCK_PENDING_POST } from "../lib/mockData";
 
 type Agent = {
   id: string;
@@ -28,6 +30,12 @@ export function AgentOverviewPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (DEV_MODE) {
+      setAgent(MOCK_AGENT);
+      setPendingPost(MOCK_PENDING_POST);
+      setLoading(false);
+      return;
+    }
     (async () => {
       const token = await getAccessToken();
       const agents = await apiFetch<Agent[]>("/agents", token!);
@@ -42,6 +50,10 @@ export function AgentOverviewPage() {
   }, [getAccessToken]);
 
   async function approve(postId: string) {
+    if (DEV_MODE) {
+      setPendingPost(null);
+      return;
+    }
     const token = await getAccessToken();
     await apiFetch(`/posts/${postId}/approve`, token!, { json: {} });
     setPendingPost(null);
