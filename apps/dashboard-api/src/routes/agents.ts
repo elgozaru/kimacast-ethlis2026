@@ -1,8 +1,10 @@
 import { Router } from "express";
+import { ethers } from "ethers";
 import { getDb } from "@kimacast/db";
 import type { AuthedRequest } from "../auth.js";
 import { getCreatorWalletAddress } from "../auth.js";
 import { mintSubname } from "../ens/subname.js";
+import * as agentRegistry from "../contracts/agentRegistry.js";
 import type { AgentContext } from "../types.js";
 
 export const agentsRouter = Router();
@@ -105,9 +107,33 @@ agentsRouter.post("/agents/:id/deploy", async (req: AuthedRequest, res) => {
       "agent-context": JSON.stringify(agentContext),
     });
 
+    // AgentRegistry.sol (packages/contracts) is a separate,
+    // independently-queryable on-chain ledger, primarily for the ENS
+    // sponsor-track bounty - not required for the platform to function
+    // (the ENS subname above is what actually makes the agent addressable
+    // /payable). A failure here is logged and surfaced back to the
+    // dashboard, but does NOT fail the overall deploy, since the ENS
+    // subname mint above already succeeded and shouldn't be rolled back
+    // over an optional add-on.
+    let onChainAgentId: string | null = null;
+    if (agentRegistry.isConfigured()) {
+      try {
+        const policyHash = ethers.keccak256(ethers.toUtf8Bytes(agent.sourcePolicy));
+        const result = await agentRegistry.registerAgent(
+          walletAddress,
+          subname,
+          `agent-context:${subname}`,
+          policyHash,
+        );
+        onChainAgentId = result.agentId;
+      } catch (err) {
+        console.error("[dashboard-api] AgentRegistry.registerAgent failed (non-fatal):", err);
+      }
+    }
+
     const updated = await getDb().agent.update({
       where: { id: agent.id },
-      data: { ensSubname: subname, status: "deployed" },
+      data: { ensSubname: subname, status: "deployed", onChainAgentId },
     });
     res.json(updated);
   } catch (err) {
