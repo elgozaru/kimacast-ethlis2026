@@ -9,6 +9,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@hiero-ledger/sdk": "2.85.0",
+    "@privy-io/server-auth": "^1.32.5",
     "@x402/core": "~2.19.0",
     "@x402/express": "~2.19.0",
     "@x402/hedera": "~2.19.0",

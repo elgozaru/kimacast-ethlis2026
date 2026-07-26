@@ -14,11 +14,11 @@ import { bytesToBase64 } from "./base64";
  * transaction's sole node account id. Pinning to exactly one node (instead
  * of letting the SDK fan out to every node on the network) keeps this to a
  * single signed transaction, which is what makes the simple
- * `Transaction.addSignature(publicKey, signatureBytes)` API usable in
- * app/api/hedera/sign/route.ts — that call requires the signature array to
- * match the transaction count 1:1. Production code that wants resilience
- * against one node being briefly down should round-robin a small pool
- * instead of hardcoding "0.0.3".
+ * `Transaction.addSignature(publicKey, signatureBytes)` API usable on the
+ * resource-server's /api/hedera/sign — that call requires the signature
+ * array to match the transaction count 1:1. Production code that wants
+ * resilience against one node being briefly down should round-robin a
+ * small pool instead of hardcoding "0.0.3".
  */
 const SINGLE_NODE_ACCOUNT_ID = "0.0.3";
 
@@ -59,14 +59,16 @@ export class PrivyHederaSigner {
 
     const unsignedBase64 = bytesToBase64(unsigned.toBytes());
 
-    // The actual secp256k1 signature happens server-side, authenticated with
-    // this app's Privy secret — see app/api/hedera/sign/route.ts. Privy's
+    // The actual secp256k1 signature happens server-side (apps/resource-server's
+    // /api/hedera/sign), authenticated with that app's Privy secret. Privy's
     // embedded-wallet browser SDK exposes an EIP-1193 provider
     // (personal_sign / eth_signTypedData), but those both hash an
     // Ethereum-prefixed message; Hedera needs a signature over the raw,
     // un-prefixed transaction body bytes (HIP-179), so this goes through
     // Privy's `walletApi.ethereum.secp256k1Sign` primitive instead, which is
-    // a server-authenticated call (see @privy-io/server-auth).
+    // a server-authenticated call (see @privy-io/server-auth). This is a
+    // relative fetch — Vite's dev proxy (see vite.config.ts) and any
+    // production reverse proxy route it to the resource-server.
     const res = await fetch("/api/hedera/sign", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -1,10 +1,8 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
-import { fetchAccountState, tinybarsToHbar } from "../../../lib/hedera";
-import { PrivyHederaSigner } from "../../../lib/hedera-privy-signer";
-import { unlockStory } from "../../../lib/x402-fetch";
+import { fetchAccountState, tinybarsToHbar } from "../lib/hedera";
+import { PrivyHederaSigner } from "../lib/hedera-privy-signer";
+import { unlockStory } from "../lib/x402-fetch";
 import type { Teaser } from "./StoryUnlock";
 
 type Stage = "idle" | "checking-balance" | "needs-funding" | "paying" | "unlocked" | "error";
@@ -34,10 +32,11 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
   }, [ready, authenticated, login]);
 
   const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
-  // The server-side sign route (app/api/hedera/sign) looks the wallet up by
-  // Privy's internal wallet id, not its address. That id lives on the
-  // matching `linkedAccounts` entry — confirm the field name against your
-  // installed @privy-io/react-auth version if this shape has changed.
+  // The resource-server's sign route (POST /api/hedera/sign) looks the
+  // wallet up by Privy's internal wallet id, not its address. That id
+  // lives on the matching `linkedAccounts` entry — confirm the field name
+  // against your installed @privy-io/react-auth version if this shape has
+  // changed.
   const embeddedWalletId = (user?.linkedAccounts.find(
     (a: any) => a.type === "wallet" && a.walletClientType === "privy",
   ) as any)?.id as string | undefined;
@@ -98,7 +97,7 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
 export function UnlockFlow(props: { postId: string; teaser: Teaser }) {
   return (
     <PrivyProvider
-      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
+      appId={import.meta.env.VITE_PRIVY_APP_ID}
       config={{
         // Email OTP covers "the email associated with their social media
         // account"; Google/Apple login are enabled too since most viewers

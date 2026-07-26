@@ -1,15 +1,14 @@
-"use client";
-
 import { Suspense, lazy, useEffect, useState } from "react";
-import { tinybarsToHbar } from "../../../lib/hedera";
-import { resourceServerUrl } from "../../../lib/resource-server-url";
+import { tinybarsToHbar } from "../lib/hedera";
 
 export type Teaser = { id: string; teaser: string; priceTinybars: string; sourceUrl: string };
 
 // Loaded only once a viewer taps "Unlock", not on every page visit — see
-// UnlockFlow.tsx for why that matters. This is the one thing standing
-// between "instant page load" and "wait on Privy's entire wallet-connector
-// bundle before you can even read the teaser."
+// UnlockFlow.tsx for why that matters. Unlike under Next.js's webpack dev
+// compiler (where this split didn't defer any dev-time compile cost —
+// verified empirically), Vite's dev server transforms modules on demand
+// per-request over native ESM, so this genuinely means Privy's bundle
+// isn't even fetched until the viewer taps Unlock.
 const UnlockFlow = lazy(() => import("./UnlockFlow").then((mod) => ({ default: mod.UnlockFlow })));
 
 /**
@@ -24,7 +23,7 @@ export function StoryUnlock({ postId }: { postId: string }) {
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
-    fetch(`${resourceServerUrl()}/api/stories/${postId}/teaser`)
+    fetch(`/api/stories/${postId}/teaser`)
       .then((r) => r.json())
       .then(setTeaser);
   }, [postId]);

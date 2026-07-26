@@ -3,7 +3,7 @@
 import { AccountId } from "@x402/hedera";
 
 const MIRROR_NODE_URL =
-  process.env.NEXT_PUBLIC_HEDERA_NETWORK === "hedera:mainnet"
+  import.meta.env.VITE_HEDERA_NETWORK === "hedera:mainnet"
     ? "https://mainnet-public.mirrornode.hedera.com"
     : "https://testnet.mirrornode.hedera.com";
 
