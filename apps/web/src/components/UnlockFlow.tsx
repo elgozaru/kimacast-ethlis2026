@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
-import { fetchAccountState, tinybarsToHbar } from "../lib/hedera";
+import { fetchAccountState, hederaAliasFromEvmAddress, tinybarsToHbar } from "../lib/hedera";
 import { PrivyHederaSigner } from "../lib/hedera-privy-signer";
 import { unlockStory } from "../lib/x402-fetch";
 import type { Teaser } from "./StoryUnlock";
@@ -104,10 +104,24 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
       </button>
 
       {stage === "needs-funding" && embeddedWallet && (
-        <p>
-          Your account needs a few cents of HBAR first — tap below to add funds with Apple Pay / Google Pay.
-          {/* Wire up buildOnrampUrl() from lib/onramp.ts here once a provider is chosen. */}
-        </p>
+        <div>
+          <p>Your account needs a few cents of HBAR first.</p>
+          {/*
+            No onramp provider is wired up yet (see lib/onramp.ts and
+            docs/SETUP.md "Funding the viewer's account") — which provider,
+            and whether it can deliver directly to a Hedera address, is
+            still an open decision, not a bug or a platform limitation.
+            Until that's wired up, showing the address lets a tester fund
+            it manually (e.g. the Hedera testnet faucet at
+            portal.hedera.com accepts this same EVM-style address as an
+            alias — see hederaAliasFromEvmAddress in lib/hedera.ts).
+          */}
+          <p>
+            Send HBAR to: <code>{embeddedWallet.address}</code>
+            <br />
+            (Hedera alias: <code>{hederaAliasFromEvmAddress(embeddedWallet.address)}</code>)
+          </p>
+        </div>
       )}
 
       {stage === "error" && <p role="alert">{error}</p>}
