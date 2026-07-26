@@ -1,0 +1,68 @@
+[
+  {
+    "agentId": "temporary-agent-id",
+    "sourceHash": "sha256:86ed6e9b36809d2d55f0f10b058a2e6f872895e16cafa5faa3e1533f1307d206",
+    "authorProfileHash": null,
+    "outputStorageId": null,
+    "content": {
+      "short_post": "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredespossibles.com contributors (reader",
+      "three_post_thread": [
+        "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredesposs",
+        "ibles.com contributors (reader-submitted, reference V187) Canonical URL: https://arbredesp",
+        "ossibles.com/FutursT"
+      ],
+      "linkedin_summary": "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredespossibles.com contributors (reader-submitted, reference V187) Canonical URL: https://arbredespossibles.com/FutursT",
+      "claims_used": [],
+      "source_url": "https://arbredespossibles.com/FutursTechno3.html#V187"
+    },
+    "generation": {
+      "provider": "local-fallback",
+      "model": "heuristic-v0",
+      "promptVersion": "v1-generic"
+    }
+  },
+  {
+    "agentId": "temporary-agent-id",
+    "sourceHash": "sha256:86ed6e9b36809d2d55f0f10b058a2e6f872895e16cafa5faa3e1533f1307d206",
+    "authorProfileHash": "sha256:local-sample-author-profile",
+    "outputStorageId": null,
+    "content": {
+      "short_post": "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredespossibles.com contributors (reader",
+      "three_post_thread": [
+        "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredesposs",
+        "ibles.com contributors (reader-submitted, reference V187) Canonical URL: https://arbredesp",
+        "ossibles.com/FutursT"
+      ],
+      "linkedin_summary": "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredespossibles.com contributors (reader-submitted, reference V187) Canonical URL: https://arbredespossibles.com/FutursT",
+      "claims_used": [],
+      "source_url": "https://arbredespossibles.com/FutursTechno3.html#V187"
+    },
+    "generation": {
+      "provider": "local-fallback",
+      "model": "heuristic-v0",
+      "promptVersion": "v2-author-tone"
+    }
+  },
+  {
+    "agentId": "temporary-agent-id",
+    "sourceHash": "sha256:86ed6e9b36809d2d55f0f10b058a2e6f872895e16cafa5faa3e1533f1307d206",
+    "authorProfileHash": null,
+    "outputStorageId": null,
+    "content": {
+      "short_post": "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredespossibles.com contributors (reader",
+      "three_post_thread": [
+        "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredesposs",
+        "ibles.com contributors (reader-submitted, reference V187) Canonical URL: https://arbredesp",
+        "ossibles.com/FutursT"
+      ],
+      "linkedin_summary": "Title: Et si nous parvenions à décrypter les ondes cérébrales? (V187) Author: arbredespossibles.com contributors (reader-submitted, reference V187) Canonical URL: https://arbredespossibles.com/FutursT",
+      "claims_used": [],
+      "source_url": "https://arbredespossibles.com/FutursTechno3.html#V187"
+    },
+    "generation": {
+      "provider": "local-fallback",
+      "model": "heuristic-v0",
+      "promptVersion": "v2-source-grounded"
+    }
+  }
+]

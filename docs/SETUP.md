@@ -293,4 +293,100 @@ a direct `@hiero-ledger/sdk` dependency, pinned to the exact version
 `@x402/hedera` doesn't re-export. This is safe because that file never
 touches a `Client`/`Transaction` obtained from `@x402/hedera`'s copy (it
 only calls `Transaction.fromBytes()` on raw bytes it receives over HTTP).
+
+## Creator onboarding + dashboard
+
+`apps/dashboard` (Vite + React, Privy-gated) is where a content publisher
+creates an agent, points it at a source, previews the generated post
+suggestions, and approves the ones worth publishing. `apps/dashboard-api`
+(Express + Prisma) is its backend: agent CRUD, ENS subname minting, the
+article-to-micro-content pipeline, 0G Storage, and X (Twitter) publishing.
+`packages/db` holds the shared Prisma schema — `apps/resource-server` reads
+from the same database to serve dashboard-approved posts through its
+existing `GET /api/stories/:postId/{teaser,full}` route, so a
+dashboard-created post becomes a real x402-gated URL without any new paywall
+route.
+
+### Setup
+
+```bash
+docker compose up -d postgres
+cp packages/db/.env.example packages/db/.env   # or just set DATABASE_URL directly
+pnpm db:generate
+pnpm db:migrate
+
+cp apps/dashboard-api/.env.example apps/dashboard-api/.env   # fill in - see below
+cp apps/dashboard/.env.example apps/dashboard/.env.local
+
+pnpm dev:dashboard-api   # :4100
+pnpm dev:dashboard       # :3010
+```
+
+Every external integration below follows this repo's established
+"runnable with zero keys" convention (see `story402/README.md` and
+`x-agent/README.md` for the pattern this follows) — the dashboard works
+end-to-end without any of them configured, using local fallbacks, and each
+can be wired in one at a time:
+
+- **`ANTHROPIC_API_KEY`** — powers the actual content generation. Without
+  it, `generate()` falls back to a naive text-truncation heuristic that
+  produces *valid* structured output but doesn't meaningfully exercise the
+  3 prompt variants (tone/grounding instructions are ignored) — get a real
+  key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
+  for a genuine comparison.
+- **`ZEROG_STORAGE_RPC` / `_INDEXER` / `_PRIVATE_KEY`** — 0G Storage, for
+  immutable source snapshots and generation results. Without them, uploads
+  go to a local content-addressed temp file instead of the real network.
+- **ENS subname automation** (`ETH_RPC_URL`, `ENS_PARENT_DOMAIN`,
+  `ENS_OPERATOR_PRIVATE_KEY`) — mints each agent's subname. This needs a
+  one-time manual step from whoever owns the parent domain, since minting
+  subnames has never required NameWrapper/wrapping (`setSubnodeRecord` is
+  available on the plain ENS Registry for any unwrapped parent — see the
+  "ENS subname generation" question below for why that matters here
+  specifically):
+  1. `npx tsx apps/dashboard-api/scripts/generate-ens-operator-key.ts` — generates
+     a **fresh, dedicated** key (never reuse the domain owner's personal
+     wallet). Put the private key in `apps/dashboard-api/.env` only.
+  2. Fund that address with a small amount of Sepolia ETH for gas.
+  3. From the wallet that owns the parent domain, call
+     `ENSRegistry.setApprovalForAll("<operator address>", true)` on
+     `0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e` (e.g. via Etherscan's
+     "Write Contract" tab) — this grants operator rights only, not
+     ownership, and is revocable any time by calling it again with `false`.
+- **`X_API_KEY` / `_API_SECRET` / `X_ACCESS_TOKEN` / `_ACCESS_TOKEN_SECRET`**
+  — publishing an approved post to X. See `x-agent/README.md` for
+  credential setup and troubleshooting (401 vs 402 causes, App permission
+  gotchas). Without them, publish returns a dry-run result.
+
+### Why not story402's or x-agent's payment/storage stack directly?
+
+`story402` and `x-agent` are standalone prototypes exploring the same
+"turn an article into social posts" idea, built independently — `story402`
+against 0G Compute for generation and a separate ZeroDev/Hashio-based x402
+implementation, `x-agent` against Claude directly with 0G Storage as
+inter-agent memory. `apps/dashboard-api` reuses their already-working 0G
+Storage client shape (`@0gfoundation/0g-storage-ts-sdk`, same env var
+names) and `x-agent`'s Claude-calling and X-publishing patterns directly,
+but settles payments through **this repo's own** `apps/facilitator` +
+`apps/resource-server` Hedera-native implementation rather than either
+prototype's payment stack, since that's the one already verified working
+end-to-end earlier in this project's history.
+
+### Article-to-micro-content pipeline
+
+`apps/dashboard-api/src/generation/` implements the required pipeline:
+`buildSnapshot()` produces the immutable source snapshot (author,
+canonicalUrl, title, retrievedAt, content, contentHash); `buildPrompt()`
+builds the 3 required variants (generic / author-tone / source-grounded)
+requesting the same structured JSON shape from each so they're directly
+comparable; `generate()` calls Claude and validates the response against
+that shape. `run-pipeline` (`pnpm --filter dashboard-api run run-pipeline`)
+runs all 3 against `apps/dashboard-api/data/input-article.md` and writes
+`prompt-v{1,2,3}-<variant>.txt` and `generation-result.json` back into
+`data/` — this file is a short, clearly-attributed excerpt of the uploaded
+sample PDF (a multi-contributor speculative-fiction archive, not a single
+team member's article as the original ask assumed), not the full document,
+since committing the whole thing into the repo isn't appropriate. Swap in
+a real, team-owned article before treating this as more than a mechanics
+test.
 If you bump `@x402/hedera`, re-check this pin.

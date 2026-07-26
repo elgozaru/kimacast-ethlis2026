@@ -36,9 +36,13 @@ const routes: RoutesConfig = {
       // payTo and price are resolved per-request from the postId in the path,
       // since every story is priced individually and paid to a different
       // agent's Hedera account (resolved through that agent's ENS name).
-      payTo: async (context) => resolveAgentHederaAccount(getPost(postIdFromPath(context.path))!.agentEns),
-      price: (context) => {
-        const post = getPost(postIdFromPath(context.path));
+      payTo: async (context) => {
+        const post = await getPost(postIdFromPath(context.path));
+        if (!post) throw new Error("Unknown story");
+        return resolveAgentHederaAccount(post.agentEns);
+      },
+      price: async (context) => {
+        const post = await getPost(postIdFromPath(context.path));
         if (!post) throw new Error("Unknown story");
         return { asset: "0.0.0", amount: post.priceTinybars };
       },
@@ -53,8 +57,8 @@ async function main() {
   app.use(cors());
   app.use(express.json());
 
-  app.get("/api/stories/:postId/teaser", (req, res) => {
-    const post = getPost(req.params.postId);
+  app.get("/api/stories/:postId/teaser", async (req, res) => {
+    const post = await getPost(req.params.postId);
     if (!post) return res.status(404).json({ error: "not_found" });
     res.json({
       id: post.id,
@@ -73,8 +77,8 @@ async function main() {
 
   app.use(paymentMiddleware(routes, resourceServer));
 
-  app.get("/api/stories/:postId/full", (req, res) => {
-    const post = getPost(req.params.postId);
+  app.get("/api/stories/:postId/full", async (req, res) => {
+    const post = await getPost(req.params.postId);
     if (!post) return res.status(404).json({ error: "not_found" });
     // paymentMiddleware only lets a request reach here once the facilitator
     // has verified AND settled the payment on Hedera.

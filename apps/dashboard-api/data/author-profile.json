@@ -1,0 +1,8 @@
+{
+  "toneDescription": "Curious, slightly wry science-communicator voice. Leans into the 'what if' framing rather than presenting speculation as settled fact. Short punchy sentences for hooks; a bit more measured for LinkedIn.",
+  "examplePosts": [
+    "Every 'sci-fi cliché' started as someone's serious research proposal. Today's is brain-wave decoding.",
+    "We've been able to watch neurons fire for decades. We still can't agree on what that activity actually *is*."
+  ],
+  "doNotUse": ["clickbait ALL CAPS", "unverified statistics", "medical claims"]
+}
