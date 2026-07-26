@@ -18,7 +18,7 @@ export type Post = {
 const posts: Record<string, Post> = {
   abc123: {
     id: "abc123",
-    agentEns: "food.storyagent.eth",
+    agentEns: "testpayment.kymacast.eth",
     teaser:
       "The secret to Lisbon's best pastel de nata isn't the custard, it's the 200-year-old lamination technique that almost died with one baker...",
     full:
