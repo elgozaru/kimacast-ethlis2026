@@ -11,26 +11,36 @@ const DEFAULT_PORT = 4000;
  * listening there, and the browser reports it as a CORS error (no server
  * ever sent back CORS headers) rather than a clearer connection failure.
  *
- * `NEXT_PUBLIC_RESOURCE_SERVER_URL`, if set, always wins. Otherwise, when
- * running in the browser on a forwarded "<name>-<port>.<domain>" hostname,
- * this swaps the port segment to point at the resource server
- * automatically, so a fresh preview URL doesn't need manual
- * reconfiguration every session. Falls back to plain localhost for a
- * normal local dev setup.
+ * `NEXT_PUBLIC_RESOURCE_SERVER_URL`, if set, wins — *unless* it points at
+ * localhost while the page itself was loaded from a non-local (forwarded)
+ * hostname. That specific combination is almost always a stale value left
+ * over from copying `.env.example` before switching to a cloud dev
+ * environment, not an intentional override, and honoring it silently
+ * reproduces the exact bug this function exists to avoid. In that case we
+ * fall through to auto-detection instead. A genuine custom override (e.g.
+ * resource-server deployed somewhere else entirely) is unaffected, since
+ * it won't look like a localhost URL.
  */
 export function resourceServerUrl(): string {
-  if (process.env.NEXT_PUBLIC_RESOURCE_SERVER_URL) {
-    return process.env.NEXT_PUBLIC_RESOURCE_SERVER_URL;
-  }
+  const explicit = process.env.NEXT_PUBLIC_RESOURCE_SERVER_URL;
+  const isBrowser = typeof window !== "undefined";
+  const pageHostname = isBrowser ? window.location.hostname : undefined;
+  const pageIsLocal = pageHostname === "localhost" || pageHostname === "127.0.0.1";
 
-  if (typeof window !== "undefined") {
-    const { hostname, protocol } = window.location;
-    const match = /^(.*-)(\d+)(\..+)$/.exec(hostname);
-    if (match) {
-      const [, prefix, , suffix] = match;
-      return `${protocol}//${prefix}${DEFAULT_PORT}${suffix}`;
+  if (explicit) {
+    const explicitIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)([:/]|$)/.test(explicit);
+    if (!(explicitIsLocal && isBrowser && !pageIsLocal)) {
+      return explicit;
     }
   }
 
-  return `http://localhost:${DEFAULT_PORT}`;
+  if (isBrowser && !pageIsLocal) {
+    const match = /^(.*-)(\d+)(\..+)$/.exec(pageHostname!);
+    if (match) {
+      const [, prefix, , suffix] = match;
+      return `${window.location.protocol}//${prefix}${DEFAULT_PORT}${suffix}`;
+    }
+  }
+
+  return explicit ?? `http://localhost:${DEFAULT_PORT}`;
 }
