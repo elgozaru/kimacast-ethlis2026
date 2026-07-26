@@ -29,9 +29,16 @@ export function isConfigured(): boolean {
 /// setup step. The platform key is never given ownership of the parent
 /// domain itself, only operator rights, which the owner can revoke at any
 /// time by calling setApprovalForAll(operatorAddress, false).
+///
+/// The subname's Registry owner is set to the operator's OWN address, not
+/// the creator's wallet - the platform needs continued write access to
+/// keep updating each agent's text records over time (reputation,
+/// agent-context) as it evolves per ENS performance/feedback, without
+/// depending on the creator's wallet being available for every future
+/// update. The creator's own wallet address is recorded separately, inside
+/// the agent-context text record's "owner" field (see routes/agents.ts).
 export async function mintSubname(
   label: string,
-  ownerAddress: string,
   textRecords: Record<string, string>,
 ): Promise<{ subname: string; node: string; txHash: string }> {
   const parentDomain = requireEnv("ENS_PARENT_DOMAIN");
@@ -55,7 +62,7 @@ export async function mintSubname(
     );
   }
 
-  const tx = await registry.setSubnodeRecord(parentNode, labelHash, ownerAddress, resolverAddress, 0n);
+  const tx = await registry.setSubnodeRecord(parentNode, labelHash, operator.address, resolverAddress, 0n);
   await tx.wait();
 
   const resolver = new ethers.Contract(resolverAddress, RESOLVER_ABI, operator);

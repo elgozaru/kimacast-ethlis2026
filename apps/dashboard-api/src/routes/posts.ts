@@ -7,7 +7,7 @@ import { publishTweet } from "../social/twitter.js";
 export const postsRouter = Router();
 
 async function assertOwnedAgent(agentId: string, creatorId: string) {
-  const agent = await getDb().agent.findFirst({ where: { id: agentId, ownerAddress: creatorId } });
+  const agent = await getDb().agent.findFirst({ where: { id: agentId, creatorId } });
   if (!agent) throw Object.assign(new Error("not_found"), { status: 404 });
   return agent;
 }
