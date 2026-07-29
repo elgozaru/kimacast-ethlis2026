@@ -178,6 +178,21 @@ Ethereum RPC provider (Alchemy, Infura, etc.) — it's a read-only lookup.
    `apps/resource-server/.env`'s `PRIVY_APP_ID` / `PRIVY_APP_SECRET` — those
    are only ever used server-side, in `POST /api/hedera/sign`. Never put
    the app secret in `apps/web`; a static Vite build has nowhere to keep it.
+5. Under **Wallet infrastructure → Authorization keys**, create a new key.
+   Save the **private** half into `apps/resource-server/.env`'s
+   `PRIVY_WALLET_AUTHORIZATION_PRIVATE_KEY` — every call to a wallet's
+   `/rpc` endpoint (including the `secp256k1Sign` call `hedera-sign.ts`
+   makes) requires a request signed with this key, or Privy silently
+   returns no signature at all. Copy the key's **id** (public, not a
+   secret) into `apps/web/.env.local`'s `VITE_PRIVY_SESSION_SIGNER_ID`.
+6. This app's embedded wallets use Privy's **TEE execution** model rather
+   than on-device execution, so granting `apps/resource-server` access to a
+   viewer's wallet goes through `useSessionSigners`/`addSessionSigners`
+   (`UnlockFlow.tsx`), not `useDelegatedActions`/`delegateWallet` — Privy's
+   SDK throws a runtime error if you use the on-device hook against a
+   TEE-execution app. `addSessionSigners` is called once per unlock
+   attempt, keyed off the authorization key's id from step 5; it's a no-op
+   if that wallet already granted access.
 
 The raw-signing step (`apps/resource-server/src/hedera-sign.ts`) is implemented against
 `privy.walletApi.ethereum.secp256k1Sign({ walletId, hash })` from
