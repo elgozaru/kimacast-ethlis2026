@@ -3,6 +3,7 @@ import cors from "cors";
 import express from "express";
 import { x402Facilitator } from "@x402/core/facilitator";
 import { ExactHederaScheme } from "@x402/hedera/exact/facilitator";
+import { extractTransactionFromPayload, inspectHederaTransaction } from "@x402/hedera";
 import { facilitatorSigner } from "./signer.js";
 
 const network = process.env.HEDERA_NETWORK ?? "hedera:testnet";
@@ -38,6 +39,24 @@ app.post("/verify", async (req, res) => {
     const result = await facilitator.verify(paymentPayload, paymentRequirements);
     if (!result.isValid) {
       console.warn("[facilitator] verify rejected:", result.invalidReason, result.invalidMessage);
+      // "invalid_exact_hedera_payload_amount_mismatch" (and friends) only
+      // say THAT the signed transaction's transfers didn't match
+      // paymentRequirements, not what actually differed. Decode the same
+      // transaction bytes the scheme itself just inspected, using the same
+      // @x402/hedera utility, so the actual transfer list is visible
+      // side-by-side with what was required.
+      try {
+        const transactionBase64 = extractTransactionFromPayload(paymentPayload.payload);
+        const inspected = inspectHederaTransaction(transactionBase64);
+        console.warn("[facilitator] required:", {
+          payTo: paymentRequirements.payTo,
+          amount: paymentRequirements.amount,
+          asset: paymentRequirements.asset,
+        });
+        console.warn("[facilitator] actual hbarTransfers:", inspected.hbarTransfers);
+      } catch (inspectErr) {
+        console.warn("[facilitator] could not decode transaction for diagnostics:", inspectErr);
+      }
     }
     res.status(result.isValid ? 200 : 402).json(result);
   } catch (err) {
