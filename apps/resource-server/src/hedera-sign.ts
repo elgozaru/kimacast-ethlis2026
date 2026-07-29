@@ -47,11 +47,35 @@ const privy = new PrivyClient(requireEnv("PRIVY_APP_ID"), requireEnv("PRIVY_APP_
  * freezing, so `signableNodeBodyBytesList` always has exactly one entry and
  * `addSignature`'s single-`Uint8Array` form applies directly.
  */
+const WALLET_PUBLIC_KEY_RETRIES = 4;
+const WALLET_PUBLIC_KEY_RETRY_DELAY_MS = 1000;
+
+/// Privy's own type marks Wallet.publicKey as optional - it isn't always
+/// populated the instant a wallet is created, the same class of
+/// "just-created, not yet queryable everywhere" lag this codebase already
+/// works around for the Hedera mirror node (lib/hedera.ts) and ENS
+/// resolver updates. Retries a few times before giving up, so a viewer
+/// who taps Unlock moments after their embedded wallet was created
+/// doesn't hit a hard failure over pure propagation lag.
+async function getWalletWithPublicKey(walletId: string) {
+  for (let attempt = 0; ; attempt++) {
+    const wallet = await privy.walletApi.getWallet({ id: walletId });
+    if (wallet.publicKey) return wallet;
+    if (attempt >= WALLET_PUBLIC_KEY_RETRIES) {
+      throw new Error(
+        `Wallet ${walletId} has no publicKey after ${attempt + 1} attempts - it may not have finished ` +
+          `initializing on Privy's side yet. Try again in a few seconds.`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, WALLET_PUBLIC_KEY_RETRY_DELAY_MS));
+  }
+}
+
 export async function handleHederaSign(req: Request, res: Response) {
   try {
     const { walletId, transaction } = req.body as { walletId: string; transaction: string };
 
-    const wallet = await privy.walletApi.getWallet({ id: walletId });
+    const wallet = await getWalletWithPublicKey(walletId);
     // Privy returns the embedded wallet's compressed secp256k1 public key as
     // a hex string (optionally 0x-prefixed) — the exact format
     // PublicKey.fromStringECDSA expects.
