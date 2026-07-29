@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PrivyProvider, usePrivy, useWallets } from "@privy-io/react-auth";
+import { PrivyProvider, useHeadlessDelegatedActions, usePrivy, useWallets } from "@privy-io/react-auth";
 import { fetchAccountState, hederaAliasFromEvmAddress, tinybarsToHbar } from "../lib/hedera";
 import { PrivyHederaSigner } from "../lib/hedera-privy-signer";
 import { unlockStory } from "../lib/x402-fetch";
@@ -20,6 +20,7 @@ type Stage = "idle" | "checking-balance" | "needs-funding" | "paying" | "unlocke
 function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser }) {
   const { login, authenticated, ready, user } = usePrivy();
   const { wallets } = useWallets();
+  const { delegateWallet } = useHeadlessDelegatedActions();
   const [stage, setStage] = useState<Stage>("idle");
   const [full, setFull] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,18 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
     if (!embeddedWallet || !embeddedWalletId) return;
 
     try {
+      // Grants apps/resource-server's Privy authorization key delegated
+      // access to THIS wallet - without it, the server-side secp256k1Sign
+      // call in hedera-sign.ts can't act on the wallet at all (that's what
+      // was causing wallet.publicKey to never populate no matter how long
+      // we retried: it wasn't a propagation-lag problem, delegation had
+      // simply never been granted). Safe to call on every unlock attempt -
+      // once a wallet is already delegated this is a no-op from the
+      // viewer's perspective (no repeat prompt), and "headless" here means
+      // it grants access silently rather than showing a confirmation UI,
+      // matching the rest of this flow's minimal-friction design.
+      await delegateWallet({ address: embeddedWallet.address, chainType: "ethereum" });
+
       setStage("checking-balance");
       const account = await fetchAccountState(embeddedWallet.address);
       if (account.balanceTinybars < BigInt(teaser.priceTinybars)) {
