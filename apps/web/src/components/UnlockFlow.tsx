@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PrivyProvider, useHeadlessDelegatedActions, usePrivy, useWallets } from "@privy-io/react-auth";
+import { PrivyProvider, useSessionSigners, usePrivy, useWallets } from "@privy-io/react-auth";
 import { fetchAccountState, hederaAliasFromEvmAddress, tinybarsToHbar } from "../lib/hedera";
 import { PrivyHederaSigner } from "../lib/hedera-privy-signer";
 import { unlockStory } from "../lib/x402-fetch";
@@ -20,7 +20,7 @@ type Stage = "idle" | "checking-balance" | "needs-funding" | "paying" | "unlocke
 function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser }) {
   const { login, authenticated, ready, user } = usePrivy();
   const { wallets } = useWallets();
-  const { delegateWallet } = useHeadlessDelegatedActions();
+  const { addSessionSigners } = useSessionSigners();
   const [stage, setStage] = useState<Stage>("idle");
   const [full, setFull] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -56,17 +56,26 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
     if (!embeddedWallet || !embeddedWalletId) return;
 
     try {
-      // Grants apps/resource-server's Privy authorization key delegated
+      // Grants apps/resource-server's Privy authorization key server-side
       // access to THIS wallet - without it, the server-side secp256k1Sign
       // call in hedera-sign.ts can't act on the wallet at all (that's what
       // was causing wallet.publicKey to never populate no matter how long
-      // we retried: it wasn't a propagation-lag problem, delegation had
-      // simply never been granted). Safe to call on every unlock attempt -
-      // once a wallet is already delegated this is a no-op from the
-      // viewer's perspective (no repeat prompt), and "headless" here means
-      // it grants access silently rather than showing a confirmation UI,
-      // matching the rest of this flow's minimal-friction design.
-      await delegateWallet({ address: embeddedWallet.address, chainType: "ethereum" });
+      // we retried: it wasn't a propagation-lag problem, access had simply
+      // never been granted). This app's embedded wallets use Privy's TEE
+      // execution model, not on-device execution, so the delegation API is
+      // useSessionSigners/addSessionSigners rather than
+      // useDelegatedActions/delegateWallet (Privy throws a runtime error if
+      // you use the on-device hook against a TEE-execution app). The
+      // signerId is the PUBLIC id of the authorization key registered in
+      // the Privy dashboard (Wallet infrastructure -> Authorization keys) -
+      // the matching private half lives server-side only, as
+      // PRIVY_WALLET_AUTHORIZATION_PRIVATE_KEY in apps/resource-server/.env.
+      // Safe to call on every unlock attempt - once a wallet already has
+      // this signer, it's a no-op from the viewer's perspective.
+      await addSessionSigners({
+        address: embeddedWallet.address,
+        signers: [{ signerId: import.meta.env.VITE_PRIVY_SESSION_SIGNER_ID }],
+      });
 
       setStage("checking-balance");
       const account = await fetchAccountState(embeddedWallet.address);
