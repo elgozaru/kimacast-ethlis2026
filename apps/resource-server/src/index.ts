@@ -18,6 +18,26 @@ const resourceServer = new x402ResourceServer(facilitatorClient).register(
   new ExactHederaScheme(),
 );
 
+// @x402/express's paymentMiddleware only forwards a verify/settle failure's
+// real detail to the CLIENT when it's a FacilitatorResponseError (a
+// malformed-response boundary error); every other failure - including a
+// well-formed SettleError describing exactly why the Hedera settlement
+// failed (errorReason/errorMessage/payer/transaction) - gets swallowed into
+// a bare `res.status(402).json({})` (see @x402/express's
+// paymentMiddlewareFromHTTPServer, the catch around processSettlement).
+// That's a deliberate choice not to leak internals to a paying client, but
+// it leaves nothing to debug from client-side alone. These hooks log the
+// real error - including SettleError/VerifyError's extra fields, which
+// aren't part of @x402/core's public exports but are own enumerable
+// properties `console.error` prints anyway - to THIS process's console
+// without changing what the client ever sees.
+resourceServer.onVerifyFailure(async ({ error }) => {
+  console.error("[resource-server] x402 verify failed:", error);
+});
+resourceServer.onSettleFailure(async ({ error }) => {
+  console.error("[resource-server] x402 settle failed:", error);
+});
+
 const FULL_STORY_PATTERN = /^\/api\/stories\/([^/]+)\/full$/;
 
 function postIdFromPath(path: string): string {
