@@ -32,7 +32,21 @@ export async function unlockStory(postId: string, signer: PrivyHederaSigner) {
     headers: client.encodePaymentSignatureHeader(paymentPayload),
   });
   if (!paid.ok) {
-    throw new Error(`Payment was rejected (${paid.status}): ${await paid.text()}`);
+    // The x402 v2 protocol deliberately keeps the JSON body minimal (often
+    // literally `{}`) on a 402 - the real reason lives in a response
+    // HEADER instead: `PAYMENT-RESPONSE` for a settlement failure (its
+    // `errorReason`/`errorMessage`) or `PAYMENT-REQUIRED` for a
+    // verification failure (its `error`). `processResponse` is the SDK's
+    // own helper for decoding whichever of those is present - reading
+    // `paid.text()` alone (the previous approach here) can never surface
+    // this, no matter what the server-side failure actually was.
+    const parsed = await client.processResponse(paid);
+    const header = parsed.header as { errorReason?: string; errorMessage?: string; error?: string } | undefined;
+    const detail =
+      header?.errorReason || header?.errorMessage
+        ? [header.errorReason, header.errorMessage].filter(Boolean).join(": ")
+        : header?.error || JSON.stringify(parsed.body);
+    throw new Error(`Payment was rejected (${paid.status}): ${detail}`);
   }
 
   return paid.json();
