@@ -24,6 +24,18 @@ export default defineConfig(({ mode }) => {
       // low-risk — narrow it to a specific suffix (e.g. [".app.github.dev"])
       // instead if you want to keep the check for a specific known provider.
       allowedHosts: true,
+      // The HMR websocket has the same forwarded-hostname problem as the
+      // HTTP Host header above, but Vite can't infer the fix on its own:
+      // the browser reaches this server through an HTTPS-terminating proxy
+      // on port 443 (e.g. https://<name>-3000.app.github.dev), while the
+      // dev server itself only knows it's listening on 3000 — without an
+      // explicit clientPort, the HMR client tries to open a websocket
+      // straight to that (unreachable, unforwarded) internal port and
+      // fails silently in the console. Only override it when
+      // VITE_HMR_CLIENT_PORT is set (see .env.example) so plain local dev
+      // — where the page really is served from localhost:3000 — is
+      // unaffected.
+      hmr: env.VITE_HMR_CLIENT_PORT ? { clientPort: Number(env.VITE_HMR_CLIENT_PORT) } : undefined,
       proxy: {
         // Same-origin from the browser's point of view, in both dev and any
         // production deployment that reverse-proxies resource-server under
