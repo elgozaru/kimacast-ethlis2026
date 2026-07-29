@@ -3,7 +3,19 @@ import { PrivyClient } from "@privy-io/server-auth";
 import { PublicKey, Transaction } from "@hiero-ledger/sdk";
 import { keccak256 } from "ethers";
 
-const privy = new PrivyClient(requireEnv("PRIVY_APP_ID"), requireEnv("PRIVY_APP_SECRET"));
+// The wallet-RPC authorization key is a SEPARATE credential from the app
+// secret above - Privy requires an authorization signature on every POST
+// to a wallet's /rpc endpoint (which secp256k1Sign uses), signed with
+// this key's private half. Without it, secp256k1Sign doesn't error
+// cleanly - it comes back with no signature at all (see the check below).
+// Generate one: Privy Dashboard -> Authorization keys -> New key, then
+// register its public half as an authorized signer for the embedded
+// wallets that need raw signing (a "key quorum") - the private key below
+// is what proves each individual request actually comes from that
+// authorized signer.
+const privy = new PrivyClient(requireEnv("PRIVY_APP_ID"), requireEnv("PRIVY_APP_SECRET"), {
+  walletApi: { authorizationPrivateKey: requireEnv("PRIVY_WALLET_AUTHORIZATION_PRIVATE_KEY") },
+});
 
 /**
  * Counterpart of the viewer's browser-side lib/hedera-privy-signer.ts (in
