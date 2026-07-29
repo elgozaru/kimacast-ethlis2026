@@ -22,13 +22,28 @@ app.use(express.json());
 // apps/resource-server/src/index.ts) speaks — POST body shape and response
 // shape are dictated by that client, not invented here.
 
+// The client-facing /verify and /settle response bodies are dictated by
+// @x402/core's HTTPFacilitatorClient and deliberately terse (a paying
+// client shouldn't see internal detail) - but that same detail is exactly
+// what's needed to debug a real payment failure, and this is the one
+// process where the actual Hedera-level reason (invalid signature,
+// insufficient fee, expired transaction, wrong node, etc.) is available.
+// Logging it here, even for the non-throwing `{success: false, ...}` /
+// `{isValid: false, ...}` results the scheme returns for ordinary
+// verification/settlement failures (not just thrown exceptions), is the
+// only place this reason is guaranteed to surface at all.
 app.post("/verify", async (req, res) => {
   try {
     const { paymentPayload, paymentRequirements } = req.body;
     const result = await facilitator.verify(paymentPayload, paymentRequirements);
+    if (!result.isValid) {
+      console.warn("[facilitator] verify rejected:", result.invalidReason, result.invalidMessage);
+    }
     res.status(result.isValid ? 200 : 402).json(result);
   } catch (err) {
-    res.status(500).json({ isValid: false, invalidReason: (err as Error).message });
+    console.error("[facilitator] /verify threw:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ isValid: false, invalidReason: message });
   }
 });
 
@@ -36,9 +51,14 @@ app.post("/settle", async (req, res) => {
   try {
     const { paymentPayload, paymentRequirements } = req.body;
     const result = await facilitator.settle(paymentPayload, paymentRequirements);
+    if (!result.success) {
+      console.warn("[facilitator] settle failed:", result.errorReason, result.errorMessage);
+    }
     res.status(result.success ? 200 : 402).json(result);
   } catch (err) {
-    res.status(500).json({ success: false, errorReason: "transaction_failed", errorMessage: (err as Error).message });
+    console.error("[facilitator] /settle threw:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, errorReason: "transaction_failed", errorMessage: message });
   }
 });
 
