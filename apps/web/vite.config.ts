@@ -1,6 +1,5 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 export default defineConfig(({ mode }) => {
   // Vite only auto-exposes VITE_-prefixed vars to import.meta.env in app
@@ -12,21 +11,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
   return {
-    plugins: [
-      react(),
-      // @privy-io/react-auth pulls in bn.js (via its Solana/wallet-crypto
-      // deps), which expects Node's global `Buffer` to just exist — true
-      // under webpack/Next.js (which auto-polyfills Node built-ins) but not
-      // Vite, which externalizes them instead. That surfaces first as the
-      // "Module 'buffer' has been externalized" console warning, then as a
-      // hard `Buffer is not defined` crash the moment code actually touches
-      // it — in this app, that's mid Hedera-signing/payment flow. This
-      // plugin injects real `buffer`/`process`/etc polyfills so that code
-      // path works unmodified; scope it to `buffer` specifically (rather
-      // than polyfilling every Node global) since that's the only one
-      // anything here has been seen to need.
-      nodePolyfills({ include: ["buffer"] }),
-    ],
+    plugins: [react()],
     server: {
       host: "0.0.0.0",
       port: 3000,
