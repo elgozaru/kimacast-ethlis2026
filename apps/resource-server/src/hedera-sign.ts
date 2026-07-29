@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { PrivyClient } from "@privy-io/server-auth";
 import { PublicKey, Transaction } from "@hiero-ledger/sdk";
-import { keccak256 } from "ethers";
+import { computeAddress, keccak256, Signature, SigningKey } from "ethers";
 
 // The wallet-RPC authorization key is a SEPARATE credential from the app
 // secret above - Privy requires an authorization signature on every POST
@@ -46,40 +46,30 @@ const privy = new PrivyClient(requireEnv("PRIVY_APP_ID"), requireEnv("PRIVY_APP_
  * The browser side pins the transaction to a single node account id before
  * freezing, so `signableNodeBodyBytesList` always has exactly one entry and
  * `addSignature`'s single-`Uint8Array` form applies directly.
+ *
+ * `addSignature` needs a Hedera `PublicKey` object paired with the raw
+ * signature bytes (Hedera transactions can be multi-sig, so it needs to
+ * know which key each signature belongs to) — but that's the only reason
+ * this route needs a public key at all. It does NOT come from Privy's
+ * `getWallet().publicKey` field: per `@privy-io/server-auth`'s own
+ * `WalletView` mapper (`dist/cjs/wallet-api/views.js`), that field is only
+ * present at all when the underlying REST response includes `public_key`,
+ * and for at least one wallet exercised here it never has, even well after
+ * granting session-signer access (so it isn't the propagation-lag issue
+ * `wallet.address` lag elsewhere in this codebase is). Recovering the
+ * public key from the signature itself sidesteps that gap entirely:
+ * ECDSA signatures let you recover the exact public key that produced them
+ * from nothing but the digest and the (r, s) pair, given one more bit (the
+ * recovery id / parity) — which we don't even need Privy to hand us, since
+ * `wallet.address` (unlike `publicKey`, always present in `WalletView`) is
+ * enough to pick the right one of the two candidates by computing each
+ * candidate's address and matching it.
  */
-const WALLET_PUBLIC_KEY_RETRIES = 4;
-const WALLET_PUBLIC_KEY_RETRY_DELAY_MS = 1000;
-
-/// Privy's own type marks Wallet.publicKey as optional - it isn't always
-/// populated the instant a wallet is created, the same class of
-/// "just-created, not yet queryable everywhere" lag this codebase already
-/// works around for the Hedera mirror node (lib/hedera.ts) and ENS
-/// resolver updates. Retries a few times before giving up, so a viewer
-/// who taps Unlock moments after their embedded wallet was created
-/// doesn't hit a hard failure over pure propagation lag.
-async function getWalletWithPublicKey(walletId: string) {
-  for (let attempt = 0; ; attempt++) {
-    const wallet = await privy.walletApi.getWallet({ id: walletId });
-    if (wallet.publicKey) return wallet;
-    if (attempt >= WALLET_PUBLIC_KEY_RETRIES) {
-      throw new Error(
-        `Wallet ${walletId} has no publicKey after ${attempt + 1} attempts - it may not have finished ` +
-          `initializing on Privy's side yet. Try again in a few seconds.`,
-      );
-    }
-    await new Promise((resolve) => setTimeout(resolve, WALLET_PUBLIC_KEY_RETRY_DELAY_MS));
-  }
-}
-
 export async function handleHederaSign(req: Request, res: Response) {
   try {
     const { walletId, transaction } = req.body as { walletId: string; transaction: string };
 
-    const wallet = await getWalletWithPublicKey(walletId);
-    // Privy returns the embedded wallet's compressed secp256k1 public key as
-    // a hex string (optionally 0x-prefixed) — the exact format
-    // PublicKey.fromStringECDSA expects.
-    const publicKey = PublicKey.fromStringECDSA(wallet.publicKey!);
+    const wallet = await privy.walletApi.getWallet({ id: walletId });
 
     const tx = Transaction.fromBytes(base64ToBytes(transaction));
 
@@ -126,6 +116,8 @@ export async function handleHederaSign(req: Request, res: Response) {
               throw new Error(`Unexpected secp256k1 signature length ${signatureBytes.length}, expected 64 or 65`);
             })();
 
+    const publicKey = recoverPublicKey(digest, compactSignature, wallet.address);
+
     tx.addSignature(publicKey, compactSignature);
 
     res.json({ transaction: bytesToBase64(tx.toBytes()) });
@@ -141,6 +133,33 @@ export async function handleHederaSign(req: Request, res: Response) {
     const message = err instanceof Error ? err.message : JSON.stringify(err) || String(err);
     res.status(500).json({ error: message });
   }
+}
+
+// An ECDSA(secp256k1) signature over a known digest determines its signer's
+// public key up to one bit of ambiguity (which of the two possible curve
+// points produced it) - resolved here by computing the Ethereum-style
+// address for both candidates and keeping whichever matches the wallet's
+// already-known address (always present on Privy's wallet response, unlike
+// `publicKey` - see the comment above handleHederaSign). `r`/`s` come
+// straight out of the raw signature bytes Privy returned; the recovery
+// parity itself is guessed and verified, not trusted from anywhere, so
+// this works even when Privy's signature has no recovery byte at all.
+function recoverPublicKey(digest: string, compactSignature: Uint8Array, walletAddress: string): PublicKey {
+  const r = "0x" + Buffer.from(compactSignature.slice(0, 32)).toString("hex");
+  const s = "0x" + Buffer.from(compactSignature.slice(32, 64)).toString("hex");
+  const wantAddress = walletAddress.toLowerCase();
+
+  for (const v of [27, 28]) {
+    const candidatePublicKey = SigningKey.recoverPublicKey(digest, Signature.from({ r, s, v }));
+    if (computeAddress(candidatePublicKey).toLowerCase() !== wantAddress) continue;
+    const compressed = SigningKey.computePublicKey(candidatePublicKey, true);
+    return PublicKey.fromBytesECDSA(hexToBytes(compressed));
+  }
+
+  throw new Error(
+    `Could not recover a public key from the signature matching wallet address ${walletAddress} - ` +
+      `the signature likely doesn't correspond to this digest/wallet.`,
+  );
 }
 
 function base64ToBytes(base64: string): Uint8Array {
