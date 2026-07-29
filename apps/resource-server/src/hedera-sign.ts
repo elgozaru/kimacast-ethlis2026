@@ -106,7 +106,16 @@ export async function handleHederaSign(req: Request, res: Response) {
 
     res.json({ transaction: bytesToBase64(tx.toBytes()) });
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    // Not every rejection here is guaranteed to be an Error instance with a
+    // .message (e.g. some SDKs reject with plain objects) - falling back
+    // to (err as Error).message in that case silently evaluates to
+    // undefined, and JSON.stringify({error: undefined}) produces "{}",
+    // which looks like "no error message at all" to whoever's debugging
+    // this. Log the raw value server-side too, since that's never subject
+    // to this serialization footgun.
+    console.error("[resource-server] /api/hedera/sign failed:", err);
+    const message = err instanceof Error ? err.message : JSON.stringify(err) || String(err);
+    res.status(500).json({ error: message });
   }
 }
 
