@@ -270,6 +270,18 @@ the same container) — it does not need to be public/forwarded to the
 outside world the way it did before, since the browser never contacts it
 directly.
 
+The HTTP side of that forwarding "just works" via `allowedHosts: true`
+above, but the HMR **websocket** needs one more setting: without it, the
+browser console shows `WebSocket connection to 'wss://<forwarded-host>/'
+failed` followed by a fallback attempt straight at `wss://localhost:3000/`
+(also failing, since that's not reachable from your browser) and Vite's
+own `failed to connect to websocket` notice. Set
+`VITE_HMR_CLIENT_PORT=443` in `apps/web/.env.local` — this tells the HMR
+client to reconnect through the same forwarded HTTPS port the page itself
+loaded over, instead of the container's internal port 3000. The app works
+fine without it; you'll just need a manual browser refresh after each edit
+instead of automatic hot-reload.
+
 ## What's grounded vs. what's still a decision
 
 Everything in this repo — the x402 wire contracts, the Hedera signing flow,
