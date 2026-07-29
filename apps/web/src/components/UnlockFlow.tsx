@@ -44,13 +44,15 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
 
   const embeddedWallet = wallets.find((w) => w.walletClientType === "privy");
   // The resource-server's sign route (POST /api/hedera/sign) looks the
-  // wallet up by Privy's internal wallet id, not its address. That id
-  // lives on the matching `linkedAccounts` entry — confirm the field name
-  // against your installed @privy-io/react-auth version if this shape has
-  // changed.
-  const embeddedWalletId = (user?.linkedAccounts.find(
+  // wallet up by Privy's internal wallet id, not its address, and needs to
+  // know whether a session signer is already attached (`delegated`) —
+  // both live on the matching `linkedAccounts` entry, not on the
+  // `useWallets()` wallet object. Confirm these field names against your
+  // installed @privy-io/react-auth version if this shape has changed.
+  const embeddedWalletAccount = user?.linkedAccounts.find(
     (a: any) => a.type === "wallet" && a.walletClientType === "privy",
-  ) as any)?.id as string | undefined;
+  ) as any as { id?: string; delegated?: boolean } | undefined;
+  const embeddedWalletId = embeddedWalletAccount?.id;
 
   async function handleUnlock() {
     if (!embeddedWallet || !embeddedWalletId) return;
@@ -70,12 +72,29 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
       // the Privy dashboard (Wallet infrastructure -> Authorization keys) -
       // the matching private half lives server-side only, as
       // PRIVY_WALLET_AUTHORIZATION_PRIVATE_KEY in apps/resource-server/.env.
-      // Safe to call on every unlock attempt - once a wallet already has
-      // this signer, it's a no-op from the viewer's perspective.
-      await addSessionSigners({
-        address: embeddedWallet.address,
-        signers: [{ signerId: import.meta.env.VITE_PRIVY_SESSION_SIGNER_ID }],
-      });
+      //
+      // NOT actually a no-op to call twice, despite how it might look -
+      // Privy's API rejects a repeat addSessionSigners call for a wallet
+      // that already has this signer with a 400 ("Duplicate signer(s)
+      // provided when updating wallet"). `delegated` on the linked-account
+      // entry reflects whether that's already true, so skip the call
+      // entirely once it is. The try/catch below is a second line of
+      // defense against that same 400, in case `delegated` hasn't
+      // refreshed in local state yet (e.g. right after this same call
+      // succeeded moments earlier) — either way the end state this flow
+      // actually needs (the server-side signer is attached) is met, so
+      // there's nothing to surface to the viewer.
+      if (!embeddedWalletAccount?.delegated) {
+        try {
+          await addSessionSigners({
+            address: embeddedWallet.address,
+            signers: [{ signerId: import.meta.env.VITE_PRIVY_SESSION_SIGNER_ID }],
+          });
+        } catch (delegateErr) {
+          const message = delegateErr instanceof Error ? delegateErr.message : String(delegateErr);
+          if (!message.toLowerCase().includes("duplicate signer")) throw delegateErr;
+        }
+      }
 
       setStage("checking-balance");
       const account = await fetchAccountState(embeddedWallet.address);
