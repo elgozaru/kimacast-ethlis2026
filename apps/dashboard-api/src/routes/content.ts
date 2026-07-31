@@ -40,7 +40,6 @@ contentRouter.post("/agents/:agentId/sources", async (req: AuthedRequest, res) =
     const input = sourceInputFromBody(req.body);
 
     const snapshot = await buildSnapshot(input);
-    const { rootHash, verified } = await storage.uploadAndVerify(snapshot.content);
 
     const previous = snapshot.canonicalUrl
       ? await getDb().contentSource.findFirst({
@@ -48,6 +47,26 @@ contentRouter.post("/agents/:agentId/sources", async (req: AuthedRequest, res) =
           orderBy: { createdAt: "desc" },
         })
       : null;
+
+    // This exact content was already ingested for this agent - e.g.
+    // re-submitting the same pasted article to try a different generation
+    // provider against it, or just resubmitting by habit. contentHash is
+    // unique per (agentId, contentHash) precisely so this is a safe,
+    // expected case, not an error: reuse the existing row (and skip a
+    // redundant 0G Storage re-upload of identical bytes) instead of
+    // attempting a doomed second insert.
+    const existing = await getDb().contentSource.findUnique({
+      where: { agentId_contentHash: { agentId: agent.id, contentHash: snapshot.contentHash } },
+    });
+    if (existing) {
+      return res.json({
+        ...existing,
+        storageVerified: true,
+        staleSuggestions: hasSourceChanged(previous?.contentHash, snapshot.contentHash),
+      });
+    }
+
+    const { rootHash, verified } = await storage.uploadAndVerify(snapshot.content);
 
     const source = await getDb().contentSource.create({
       data: {
