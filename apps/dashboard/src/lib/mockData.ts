@@ -17,6 +17,27 @@ export const MOCK_AGENT = {
   reputationScore: 84,
 };
 
+// A second and third agent purely so the DEV_MODE "My agents" list/switcher
+// has more than one row to demonstrate - MOCK_AGENT above stays first so
+// every existing DEV_MODE screen that assumed a single agent is unaffected.
+export const MOCK_AGENTS = [
+  MOCK_AGENT,
+  {
+    id: "dev-mock-agent-2",
+    name: "Bruno Football Recaps",
+    ensSubname: "bruno-football.kymacast.eth",
+    status: "deployed",
+    reputationScore: 61,
+  },
+  {
+    id: "dev-mock-agent-3",
+    name: "Chidi Markets Digest",
+    ensSubname: null,
+    status: "draft",
+    reputationScore: 0,
+  },
+];
+
 const SOURCE_URL = "https://arbredespossibles.com/FutursTechno3.html#V187";
 
 export const MOCK_GENERATIONS = [

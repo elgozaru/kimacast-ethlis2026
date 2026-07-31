@@ -70,6 +70,10 @@ model ContentSource {
   title        String
   content      String   @db.Text
   contentHash  String   @unique
+  /// "text" | "url" | "pdf" | "rss" - how this snapshot was retrieved.
+  /// Display-only; content/contentHash are already kind-agnostic by the
+  /// time they reach this row (see buildSnapshot in content/snapshot.ts).
+  sourceType   String   @default("text")
   /// 0g://<rootHash> once uploaded to 0G Storage.
   storageUri   String?
   retrievedAt  DateTime @default(now())
@@ -121,6 +125,13 @@ model Post {
   /// "pending" | "approved" | "rejected" | "published"
   status             String            @default("pending")
   publishedTweetId   String?
+  /// Per-channel publish results keyed by channel name, e.g.
+  /// { x: { id, posted }, telegram: { id, posted } } - one agent can be
+  /// configured (via Agent.settings.socialChannels) to publish to more
+  /// than one platform per post. publishedTweetId above is kept
+  /// specifically for X/backward compatibility with anything reading it
+  /// directly; this is the general form.
+  publishResults     Json?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 }

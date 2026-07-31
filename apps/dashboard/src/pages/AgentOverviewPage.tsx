@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
 import { DEV_MODE } from "../lib/devMode";
-import { MOCK_AGENT, MOCK_PENDING_POST } from "../lib/mockData";
+import { MOCK_AGENTS, MOCK_PENDING_POST } from "../lib/mockData";
 
 type Agent = {
   id: string;
@@ -23,31 +23,45 @@ type Post = {
 /// a 2x2 stat-tile grid, the latest source, and the latest generated
 /// bundle with an inline Approve action - the "preview posts in the same
 /// page" requirement.
+///
+/// With no :agentId route param (the "/" landing route), this shows the
+/// creator's most-recently-created agent, same as before multi-agent
+/// support existed. Reached via "/agents/:agentId" (from the My agents
+/// list, see AgentsListPage) it shows that specific agent instead - the
+/// same component either way, just scoped to a different agent.
 export function AgentOverviewPage() {
+  const { agentId } = useParams<{ agentId?: string }>();
   const { getAccessToken } = usePrivy();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [pendingPost, setPendingPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     if (DEV_MODE) {
-      setAgent(MOCK_AGENT);
-      setPendingPost(MOCK_PENDING_POST);
+      const selected = (agentId ? MOCK_AGENTS.find((a) => a.id === agentId) : MOCK_AGENTS[0]) ?? null;
+      setAgent(selected);
+      setPendingPost(selected ? MOCK_PENDING_POST : null);
       setLoading(false);
       return;
     }
     (async () => {
       const token = await getAccessToken();
-      const agents = await apiFetch<Agent[]>("/agents", token!);
-      const first = agents[0] ?? null;
-      setAgent(first);
-      if (first) {
-        const posts = await apiFetch<Post[]>(`/agents/${first.id}/posts`, token!);
+      let selected: Agent | null;
+      if (agentId) {
+        selected = await apiFetch<Agent>(`/agents/${agentId}`, token!);
+      } else {
+        const agents = await apiFetch<Agent[]>("/agents", token!);
+        selected = agents[0] ?? null;
+      }
+      setAgent(selected);
+      if (selected) {
+        const posts = await apiFetch<Post[]>(`/agents/${selected.id}/posts`, token!);
         setPendingPost(posts.find((p) => p.status === "pending") ?? null);
       }
       setLoading(false);
     })();
-  }, [getAccessToken]);
+  }, [agentId, getAccessToken]);
 
   async function approve(postId: string) {
     if (DEV_MODE) {
@@ -80,9 +94,14 @@ export function AgentOverviewPage() {
           <h1>Agent overview</h1>
           <p>Monitor identity, generation, revenue, and demand.</p>
         </div>
-        <Link className="btn btn-primary" to="/onboarding" style={{ textDecoration: "none" }}>
-          + Create agent
-        </Link>
+        <div style={{ display: "flex", gap: 12 }}>
+          <Link className="btn btn-ghost" to="/agents" style={{ textDecoration: "none" }}>
+            Switch agent
+          </Link>
+          <Link className="btn btn-primary" to="/onboarding" style={{ textDecoration: "none" }}>
+            + Create agent
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2" style={{ marginBottom: 20 }}>
@@ -123,7 +142,7 @@ export function AgentOverviewPage() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>Latest source</h3>
           <p style={{ color: "var(--text-muted)" }}>
-            Ingest a source and run generation from the <Link to="/content">Content</Link> page.
+            Ingest a source and run generation from the <Link to={`/agents/${agent.id}/content`}>Content</Link> page.
           </p>
 
           <h3>Generated bundle</h3>

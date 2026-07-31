@@ -2,7 +2,7 @@ import { Router } from "express";
 import { getDb } from "@kimacast/db";
 import type { AuthedRequest } from "../auth.js";
 import { splitFreeGated } from "../content/split.js";
-import { publishTweet } from "../social/twitter.js";
+import { PUBLISHERS, type PublishResult } from "../social/publishers.js";
 
 export const postsRouter = Router();
 
@@ -77,27 +77,42 @@ postsRouter.post("/posts/:postId/reject", async (req: AuthedRequest, res) => {
   }
 });
 
-/// Publishes an approved post's teaser (the free hook) to X, and returns
-/// the gated URL the caption should link to - the URL that, when a viewer
-/// taps it and hits "Unlock", triggers the x402 flow against
-/// apps/resource-server / apps/facilitator.
+/// Publishes an approved post's teaser (the free hook) to every channel the
+/// agent has enabled (agent.settings.socialChannels, defaulting to just
+/// ["x"] for agents created before multi-channel publishing existed), and
+/// returns the gated URL the caption should link to - the URL that, when a
+/// viewer taps it and hits "Unlock", triggers the x402 flow against
+/// apps/resource-server / apps/facilitator. An unrecognized channel name
+/// (e.g. a settings value from before a channel was removed) is skipped
+/// rather than failing the whole publish.
 postsRouter.post("/posts/:postId/publish", async (req: AuthedRequest, res) => {
   try {
     const post = await getDb().post.findUnique({ where: { id: req.params.postId } });
     if (!post) return res.status(404).json({ error: "not_found" });
     if (post.status !== "approved") return res.status(409).json({ error: "post_not_approved" });
-    await assertOwnedAgent(post.agentId, req.creatorId!);
+    const agent = await assertOwnedAgent(post.agentId, req.creatorId!);
 
     const webOrigin = process.env.WEB_APP_ORIGIN || "http://localhost:3000";
     const unlockUrl = `${webOrigin}/p/${post.id}`;
-    const tweetText = `${post.teaser}\n\n${unlockUrl}`.slice(0, 280);
+    const baseText = `${post.teaser}\n\n${unlockUrl}`;
+    const settings = agent.settings as any;
+    const channels: string[] = settings?.socialChannels ?? ["x"];
 
-    const tweet = await publishTweet(tweetText, { dryRun: req.body.dryRun });
+    const results: Record<string, PublishResult> = {};
+    for (const channel of channels) {
+      const publisher = PUBLISHERS[channel];
+      if (!publisher) continue;
+      // X's 280-char limit doesn't apply to Telegram (4096); truncate per
+      // channel rather than to the tightest common denominator.
+      const text = channel === "x" ? baseText.slice(0, 280) : baseText.slice(0, 4000);
+      results[channel] = await publisher(text, { dryRun: req.body.dryRun, chatId: settings?.telegramChatId });
+    }
+
     const updated = await getDb().post.update({
       where: { id: post.id },
-      data: { status: "published", publishedTweetId: tweet.id },
+      data: { status: "published", publishedTweetId: results.x?.id ?? null, publishResults: results },
     });
-    res.json({ ...updated, unlockUrl, tweet });
+    res.json({ ...updated, unlockUrl, results });
   } catch (err) {
     respondError(res, err);
   }

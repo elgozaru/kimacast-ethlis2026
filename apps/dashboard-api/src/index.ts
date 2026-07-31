@@ -18,7 +18,7 @@ process.on("unhandledRejection", (err) => {
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "5mb" })); // pasted article text can be sizeable
+app.use(express.json({ limit: "20mb" })); // base64-encoded PDF uploads (see routes/content.ts) run ~33% larger than the file itself
 
 // Mounted under /api to match apps/dashboard's vite.config.ts dev proxy
 // (which forwards /api/* here without rewriting the prefix away) and this
