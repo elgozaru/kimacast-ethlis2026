@@ -21,6 +21,8 @@ export function OnboardingPage() {
   const [toneDescription, setToneDescription] = useState("");
   const [freeField, setFreeField] = useState<"short_post" | "linkedin_summary">("short_post");
   const [defaultPriceTinybars, setDefaultPriceTinybars] = useState("2000000");
+  const [socialChannels, setSocialChannels] = useState<string[]>(["x"]);
+  const [telegramChatId, setTelegramChatId] = useState("");
   const [agent, setAgent] = useState<Agent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,7 +46,7 @@ export function OnboardingPage() {
           name,
           capabilities: ["article-summary", "short-social-post", "three-post-thread"],
           sourcePolicy: "author-authorized",
-          settings: { toneDescription, freeGatedSplit: { freeField }, defaultPriceTinybars },
+          settings: { toneDescription, freeGatedSplit: { freeField }, defaultPriceTinybars, socialChannels, telegramChatId },
         },
       });
       setAgent(created);
@@ -111,6 +113,46 @@ export function OnboardingPage() {
         <div className="form-field">
           <label>Default unlock price (tinybars)</label>
           <input value={defaultPriceTinybars} onChange={(e) => setDefaultPriceTinybars(e.target.value)} />
+        </div>
+
+        <div className="form-field">
+          <label>Publish to</label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}>
+            <input
+              type="checkbox"
+              style={{ width: "auto" }}
+              checked={socialChannels.includes("x")}
+              onChange={(e) => setSocialChannels((prev) => (e.target.checked ? [...prev, "x"] : prev.filter((c) => c !== "x")))}
+            />
+            X (Twitter)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400, marginTop: 6 }}>
+            <input
+              type="checkbox"
+              style={{ width: "auto" }}
+              checked={socialChannels.includes("telegram")}
+              onChange={(e) =>
+                setSocialChannels((prev) => (e.target.checked ? [...prev, "telegram"] : prev.filter((c) => c !== "telegram")))
+              }
+            />
+            Telegram
+          </label>
+          {socialChannels.includes("telegram") && (
+            <input
+              value={telegramChatId}
+              onChange={(e) => setTelegramChatId(e.target.value)}
+              placeholder="Telegram chat/channel ID (e.g. -1001234567890)"
+              style={{ marginTop: 6, marginLeft: 24, width: "calc(100% - 24px)" }}
+            />
+          )}
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400, marginTop: 6, color: "var(--text-muted)" }}>
+            <input type="checkbox" style={{ width: "auto" }} disabled />
+            Facebook <span style={{ fontStyle: "italic" }}>(coming soon - requires Meta App Review)</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400, marginTop: 6, color: "var(--text-muted)" }}>
+            <input type="checkbox" style={{ width: "auto" }} disabled />
+            Instagram <span style={{ fontStyle: "italic" }}>(coming soon - requires Meta App Review)</span>
+          </label>
         </div>
 
         {!agent && (
