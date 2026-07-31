@@ -40,6 +40,20 @@ export const MOCK_AGENTS = [
 
 const SOURCE_URL = "https://arbredespossibles.com/FutursTechno3.html#V187";
 
+// Stands in for GET /agents/:agentId/sources so ContentPage's "previously
+// registered sources" list has something to render in DEV_MODE.
+export const MOCK_SOURCES = [
+  {
+    id: "dev-mock-source-1",
+    title: "Decoding brainwaves: an Et si...? scenario",
+    sourceType: "text",
+    canonicalUrl: SOURCE_URL,
+    author: null,
+    retrievedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
 export const MOCK_GENERATIONS = [
   {
     id: "dev-mock-gen-1",

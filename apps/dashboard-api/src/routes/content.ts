@@ -92,6 +92,34 @@ contentRouter.post("/agents/:agentId/sources", async (req: AuthedRequest, res) =
   }
 });
 
+/// Lists this agent's already-ingested sources, most recent first, so the
+/// dashboard can offer "generate again from an existing source" instead of
+/// requiring the raw text/URL/PDF/feed to be resubmitted every time.
+/// Excludes the full `content` text (can be large - PDFs especially) since
+/// this is a list view; /sources/:sourceId/generate reads it directly from
+/// the DB when actually generating.
+contentRouter.get("/agents/:agentId/sources", async (req: AuthedRequest, res) => {
+  try {
+    const agent = await assertOwnedAgent(req.params.agentId, req.creatorId!);
+    const sources = await getDb().contentSource.findMany({
+      where: { agentId: agent.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        title: true,
+        sourceType: true,
+        canonicalUrl: true,
+        author: true,
+        retrievedAt: true,
+        createdAt: true,
+      },
+    });
+    res.json(sources);
+  } catch (err) {
+    respondError(res, err);
+  }
+});
+
 /// Runs the generation pipeline for one ContentSource. `variant` selects
 /// one of the 3 required prompt variants; omit it to run all 3 (used for
 /// the comparison run in the article-to-micro-content challenge).

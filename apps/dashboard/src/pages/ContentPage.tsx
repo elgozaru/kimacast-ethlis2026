@@ -3,10 +3,19 @@ import { useParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
 import { DEV_MODE } from "../lib/devMode";
-import { MOCK_AGENTS, MOCK_GENERATIONS } from "../lib/mockData";
+import { MOCK_AGENTS, MOCK_GENERATIONS, MOCK_SOURCES } from "../lib/mockData";
 
 type Agent = { id: string; name: string };
 type ContentSource = { id: string; title: string };
+type SourceListItem = {
+  id: string;
+  title: string;
+  sourceType: string;
+  canonicalUrl: string | null;
+  author: string | null;
+  retrievedAt: string;
+  createdAt: string;
+};
 type GenerationResult = {
   id: string;
   promptVersion: string;
@@ -33,6 +42,7 @@ const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
   pdf: "Upload PDF",
   rss: "RSS feed",
 };
+const SOURCE_TYPE_LABELS: Record<string, string> = { text: "Pasted text", url: "Website", pdf: "PDF", rss: "RSS" };
 
 /// Base64-encodes a File's raw bytes for the /agents/:agentId/sources
 /// route's `pdfBase64` field - a plain fetch() body, not FormData, so
@@ -60,23 +70,35 @@ export function ContentPage() {
   const [feedUrl, setFeedUrl] = useState("");
   const [results, setResults] = useState<GenerationResult[]>([]);
   const [postsByGeneration, setPostsByGeneration] = useState<Record<string, Post>>({});
+  const [sources, setSources] = useState<SourceListItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  async function loadSources(currentAgentId: string) {
+    if (DEV_MODE) {
+      setSources(MOCK_SOURCES);
+      return;
+    }
+    const token = await getAccessToken();
+    setSources(await apiFetch<SourceListItem[]>(`/agents/${currentAgentId}/sources`, token!));
+  }
+
   useEffect(() => {
     if (DEV_MODE) {
-      setAgent((agentId ? MOCK_AGENTS.find((a) => a.id === agentId) : MOCK_AGENTS[0]) ?? null);
+      const selected = (agentId ? MOCK_AGENTS.find((a) => a.id === agentId) : MOCK_AGENTS[0]) ?? null;
+      setAgent(selected);
+      if (selected) loadSources(selected.id);
       return;
     }
     (async () => {
       const token = await getAccessToken();
-      if (agentId) {
-        setAgent(await apiFetch<Agent>(`/agents/${agentId}`, token!));
-      } else {
-        const agents = await apiFetch<Agent[]>("/agents", token!);
-        setAgent(agents[0] ?? null);
-      }
+      const selected = agentId
+        ? await apiFetch<Agent>(`/agents/${agentId}`, token!)
+        : (await apiFetch<Agent[]>("/agents", token!))[0] ?? null;
+      setAgent(selected);
+      if (selected) loadSources(selected.id);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, getAccessToken]);
 
   // What counts as "ready to generate" differs per source type - content.ts's
@@ -111,6 +133,34 @@ export function ContentPage() {
               : { feedUrl };
       const source = await apiFetch<ContentSource>(`/agents/${agent.id}/sources`, token!, { json: body });
       const generations = await apiFetch<GenerationResult[]>(`/sources/${source.id}/generate`, token!, { json: {} });
+      setResults(generations);
+      loadSources(agent.id); // pick up the newly-ingested (or reused) source
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /// Re-runs generation against a source that's already been ingested
+  /// (see the "Previously registered sources" list below), instead of
+  /// resubmitting the raw text/URL/PDF/feed - the same endpoint
+  /// runPipeline() calls after ingesting, just skipping straight to it.
+  /// Useful for re-generating with a different agent.settings.
+  /// generationProvider (e.g. after switching to 0G Compute) without
+  /// re-pasting the article.
+  async function generateFromSource(sourceId: string) {
+    setBusy(true);
+    setError(null);
+    setResults([]);
+    try {
+      if (DEV_MODE) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        setResults(MOCK_GENERATIONS);
+        return;
+      }
+      const token = await getAccessToken();
+      const generations = await apiFetch<GenerationResult[]>(`/sources/${sourceId}/generate`, token!, { json: {} });
       setResults(generations);
     } catch (err) {
       setError((err as Error).message);
@@ -204,6 +254,38 @@ export function ContentPage() {
             </button>
             {error && <p style={{ color: "#dc2626" }}>{error}</p>}
           </div>
+
+          {sources && sources.length > 0 && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h3 style={{ marginTop: 0 }}>Previously registered sources</h3>
+              <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: -8, marginBottom: 12 }}>
+                Generate again from a source you've already ingested - useful after changing the agent's generation provider
+                or tone, without re-pasting/re-uploading it.
+              </p>
+              {sources.map((s) => (
+                <div
+                  key={s.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 0",
+                    borderTop: "1px solid var(--border)",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{s.title}</div>
+                    <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                      {SOURCE_TYPE_LABELS[s.sourceType] ?? s.sourceType} · {new Date(s.retrievedAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <button className="btn btn-primary" disabled={busy} onClick={() => generateFromSource(s.id)}>
+                    Generate suggestions
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {results.length > 0 && (
             <div className="grid" style={{ gridTemplateColumns: `repeat(${results.length}, 1fr)` }}>
