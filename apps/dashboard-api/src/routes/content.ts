@@ -4,7 +4,8 @@ import type { AuthedRequest } from "../auth.js";
 import { buildSnapshot, type SourceInput } from "../content/snapshot.js";
 import { ZgStorageClient, hasSourceChanged } from "../storage/zgStorage.js";
 import { buildPrompt } from "../generation/promptBuilder.js";
-import { generate } from "../generation/claude.js";
+import { generate } from "../generation/providers.js";
+import { listProviders as listZgComputeProviders } from "../generation/zgCompute.js";
 import type { AuthorProfile, PromptVariant } from "../types.js";
 import { createHash } from "node:crypto";
 
@@ -92,7 +93,7 @@ contentRouter.post("/sources/:sourceId/generate", async (req: AuthedRequest, res
     const results = [];
     for (const variant of variants) {
       const prompt = buildPrompt(variant, source as any, authorProfile);
-      const { content, provider, model } = await generate(prompt, source.canonicalUrl ?? "");
+      const { content, provider, model } = await generate(prompt, source.canonicalUrl ?? "", (agent.settings as any) ?? {});
       const { rootHash } = await storage.upload(JSON.stringify(content, null, 2));
 
       const result = await getDb().generationResult.create({
@@ -128,6 +129,20 @@ contentRouter.post("/agents/:agentId/author-profile", async (req: AuthedRequest,
       data: { agentId: agent.id, profileHash, toneDescription: data.toneDescription ?? "", data },
     });
     res.status(201).json(profile);
+  } catch (err) {
+    respondError(res, err);
+  }
+});
+
+/// Lists 0G Compute Network providers/models directly from the chain, so
+/// the dashboard can offer a real picker instead of asking a creator to
+/// paste a provider address. Read-only on-chain data (no wallet/private
+/// key needed for THIS call - see generation/zgCompute.ts's listProviders),
+/// so it works even before an agent's own ZEROG_COMPUTE_PRIVATE_KEY-backed
+/// generation call would.
+contentRouter.get("/zg-compute/providers", async (_req: AuthedRequest, res) => {
+  try {
+    res.json(await listZgComputeProviders());
   } catch (err) {
     respondError(res, err);
   }

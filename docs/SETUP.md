@@ -355,12 +355,28 @@ Every external integration below follows this repo's established
 end-to-end without any of them configured, using local fallbacks, and each
 can be wired in one at a time:
 
-- **`ANTHROPIC_API_KEY`** — powers the actual content generation. Without
-  it, `generate()` falls back to a naive text-truncation heuristic that
-  produces *valid* structured output but doesn't meaningfully exercise the
-  3 prompt variants (tone/grounding instructions are ignored) — get a real
-  key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
-  for a genuine comparison.
+- **`ANTHROPIC_API_KEY`** — powers the actual content generation (the
+  default provider; see `settings.generationProvider` below for the
+  alternative). Without it, `generate()` falls back to a naive
+  text-truncation heuristic that produces *valid* structured output but
+  doesn't meaningfully exercise the 3 prompt variants (tone/grounding
+  instructions are ignored) — get a real key from
+  [console.anthropic.com](https://console.anthropic.com/settings/keys) for
+  a genuine comparison. This is billed separately from any Claude
+  subscription (claude.ai, Claude Code) — a 400 "credit balance is too
+  low" means that Console account's API credit needs topping up, not that
+  a subscription should have covered it.
+- **`ZEROG_COMPUTE_RPC` / `_PRIVATE_KEY`** (`generation/zgCompute.ts`) — an
+  alternative to Anthropic above, per-agent via Onboarding's "Generation
+  model" field (`settings.generationProvider: "0g-compute"` +
+  `zgComputeProviderAddress`/`zgComputeModel`, picked from
+  `GET /zg-compute/providers`' live on-chain listing). Runs on 0G's
+  decentralized inference marketplace instead of Claude — a genuinely
+  different model (DeepSeek/Qwen/GPT-OSS as of writing, not Claude), paid
+  from a 0G Compute ledger balance funded with 0G testnet ("Galileo")
+  tokens instead of a USD API credit balance. `ZEROG_COMPUTE_RPC` is the
+  same 0G chain RPC as `ZEROG_STORAGE_RPC` above, not a separate
+  inference endpoint.
 - **`ZEROG_STORAGE_RPC` / `_INDEXER` / `_PRIVATE_KEY`** — 0G Storage, for
   immutable source snapshots and generation results. Without them, uploads
   go to a local content-addressed temp file instead of the real network.
@@ -393,6 +409,14 @@ can be wired in one at a time:
   — publishing an approved post to X. See `x-agent/README.md` for
   credential setup and troubleshooting (401 vs 402 causes, App permission
   gotchas). Without them, publish returns a dry-run result.
+- **`TELEGRAM_BOT_TOKEN`** (`social/telegram.ts`) — publishing to Telegram,
+  alongside X (`settings.socialChannels`, chosen in Onboarding). One bot
+  token for the whole platform, like the X credentials above; the
+  destination varies per agent (`settings.telegramChatId`), since the bot
+  has to be added as an admin to each target chat/channel. Facebook and
+  Instagram are NOT implemented — both need Meta App Review and a
+  per-creator OAuth flow, not just a static token; the dashboard shows
+  both as disabled "coming soon" options rather than silently failing.
 
 ### Why not story402's or x-agent's payment/storage stack directly?
 
@@ -406,7 +430,10 @@ names) and `x-agent`'s Claude-calling and X-publishing patterns directly,
 but settles payments through **this repo's own** `apps/facilitator` +
 `apps/resource-server` Hedera-native implementation rather than either
 prototype's payment stack, since that's the one already verified working
-end-to-end earlier in this project's history.
+end-to-end earlier in this project's history. `story402`'s 0G Compute
+wrapper (`src/compute/zgCompute.ts`) was later ported in too
+(`generation/zgCompute.ts`), as an alternative to Claude rather than a
+replacement for it — see `ZEROG_COMPUTE_RPC` / `_PRIVATE_KEY` above.
 
 ### Article-to-micro-content pipeline
 
