@@ -18,7 +18,7 @@ type Stage = "idle" | "checking-balance" | "needs-funding" | "paying" | "unlocke
  * anyone has even decided to pay.
  */
 function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser }) {
-  const { login, authenticated, ready, user } = usePrivy();
+  const { login, logout, authenticated, ready, user } = usePrivy();
   const { wallets } = useWallets();
   const { addSessionSigners } = useSessionSigners();
   const [stage, setStage] = useState<Stage>("idle");
@@ -53,6 +53,19 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
     (a: any) => a.type === "wallet" && a.walletClientType === "privy",
   ) as any as { id?: string; delegated?: boolean } | undefined;
   const embeddedWalletId = embeddedWalletAccount?.id;
+
+  // Reset the auto-login guard so the effect above re-triggers `login()` on
+  // the next render - otherwise, once `hasTriggeredLogin` has fired, logging
+  // out just leaves the viewer stuck on the disabled "Signing you in…"
+  // button forever (authenticated goes false, but the ref still blocks the
+  // effect from calling login() again). Mainly useful for testing: an x402
+  // payment self-nets to zero and is rejected if the viewer's own wallet is
+  // also the story's payTo account, so switching test accounts requires a
+  // way to log out first.
+  async function handleLogout() {
+    await logout();
+    hasTriggeredLogin.current = false;
+  }
 
   async function handleUnlock() {
     if (!embeddedWallet || !embeddedWalletId) return;
@@ -120,6 +133,11 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
         <p className="pill pill-green">Bundle unlocked</p>
         <p style={{ marginTop: 12 }}>{full}</p>
         <a href={teaser.sourceUrl}>Visit the original source →</a>
+        <div style={{ marginTop: 16 }}>
+          <button onClick={handleLogout} style={{ background: "none", border: "none", padding: 0, color: "#6b7280", fontSize: 13, cursor: "pointer" }}>
+            Log out
+          </button>
+        </div>
       </div>
     );
   }
@@ -177,6 +195,12 @@ function UnlockFlowInner({ postId, teaser }: { postId: string; teaser: Teaser })
       <button className="btn btn-orange" onClick={handleUnlock} disabled={stage === "checking-balance" || stage === "paying"}>
         {stage === "paying" ? "Signing…" : "Sign & unlock bundle"}
       </button>
+
+      <div style={{ marginTop: 12 }}>
+        <button onClick={handleLogout} style={{ background: "none", border: "none", padding: 0, color: "#6b7280", fontSize: 13, cursor: "pointer" }}>
+          Not you? Log out
+        </button>
+      </div>
 
       {stage === "needs-funding" && embeddedWallet && (
         <div style={{ marginTop: 16 }}>
