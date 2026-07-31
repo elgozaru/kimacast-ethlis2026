@@ -98,6 +98,9 @@ export function AgentOverviewPage() {
           <Link className="btn btn-ghost" to="/agents" style={{ textDecoration: "none" }}>
             Switch agent
           </Link>
+          <Link className="btn btn-ghost" to={`/agents/${agent.id}/settings`} style={{ textDecoration: "none" }}>
+            Agent settings
+          </Link>
           <Link className="btn btn-primary" to="/onboarding" style={{ textDecoration: "none" }}>
             + Create agent
           </Link>
