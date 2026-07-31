@@ -103,6 +103,13 @@ export const MOCK_GENERATIONS = [
   },
 ];
 
+// Stands in for GET /zg-compute/providers (real on-chain data) so the
+// Onboarding page's 0G Compute picker has something to render in DEV_MODE.
+export const MOCK_ZG_COMPUTE_PROVIDERS = [
+  { provider: "0xf07240Efa67755B5311bc75784a061eDB47165Dd", model: "deepseek-v3.1", verifiability: "TeeML", inputPrice: "10", outputPrice: "30" },
+  { provider: "0x3feE5a4dd5FDb8a32dEd97F80546a680c04C7fFB", model: "qwen2.5-72b-instruct", verifiability: "TeeML", inputPrice: "8", outputPrice: "25" },
+];
+
 export const MOCK_PENDING_POST = {
   id: "dev-mock-post-1",
   status: "pending",

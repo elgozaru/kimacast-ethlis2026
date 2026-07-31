@@ -2,6 +2,7 @@ import { useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
 import { DEV_MODE } from "../lib/devMode";
+import { MOCK_ZG_COMPUTE_PROVIDERS } from "../lib/mockData";
 
 type Agent = {
   id: string;
@@ -9,6 +10,8 @@ type Agent = {
   ensSubname: string | null;
   status: string;
 };
+
+type ZgComputeProvider = { provider: string; model: string; verifiability: string; inputPrice: string; outputPrice: string };
 
 /// Creates a content-publisher agent and deploys it (mints its ENS
 /// subname). Settings here cover what the spec asks for: capabilities,
@@ -23,9 +26,26 @@ export function OnboardingPage() {
   const [defaultPriceTinybars, setDefaultPriceTinybars] = useState("2000000");
   const [socialChannels, setSocialChannels] = useState<string[]>(["x"]);
   const [telegramChatId, setTelegramChatId] = useState("");
+  const [generationProvider, setGenerationProvider] = useState<"anthropic" | "0g-compute">("anthropic");
+  const [zgComputeProviders, setZgComputeProviders] = useState<ZgComputeProvider[] | null>(null);
+  const [zgComputeSelection, setZgComputeSelection] = useState(""); // "provider|model"
   const [agent, setAgent] = useState<Agent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  async function loadZgComputeProviders() {
+    if (zgComputeProviders) return; // already loaded
+    if (DEV_MODE) {
+      setZgComputeProviders(MOCK_ZG_COMPUTE_PROVIDERS);
+      return;
+    }
+    try {
+      const token = await getAccessToken();
+      setZgComputeProviders(await apiFetch<ZgComputeProvider[]>("/zg-compute/providers", token!));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   async function handleCreate() {
     setBusy(true);
@@ -41,12 +61,21 @@ export function OnboardingPage() {
     }
     try {
       const token = await getAccessToken();
+      const [zgComputeProviderAddress, zgComputeModel] = zgComputeSelection.split("|");
       const created = await apiFetch<Agent>("/agents", token!, {
         json: {
           name,
           capabilities: ["article-summary", "short-social-post", "three-post-thread"],
           sourcePolicy: "author-authorized",
-          settings: { toneDescription, freeGatedSplit: { freeField }, defaultPriceTinybars, socialChannels, telegramChatId },
+          settings: {
+            toneDescription,
+            freeGatedSplit: { freeField },
+            defaultPriceTinybars,
+            socialChannels,
+            telegramChatId,
+            generationProvider,
+            ...(generationProvider === "0g-compute" ? { zgComputeProviderAddress, zgComputeModel } : {}),
+          },
         },
       });
       setAgent(created);
@@ -100,6 +129,42 @@ export function OnboardingPage() {
             onChange={(e) => setToneDescription(e.target.value)}
             placeholder="Curious, slightly wry science-communicator voice..."
           />
+        </div>
+
+        <div className="form-field">
+          <label>Generation model</label>
+          <select
+            value={generationProvider}
+            onChange={(e) => {
+              const value = e.target.value as typeof generationProvider;
+              setGenerationProvider(value);
+              if (value === "0g-compute") loadZgComputeProviders();
+            }}
+          >
+            <option value="anthropic">Claude (Anthropic API)</option>
+            <option value="0g-compute">0G Compute Network (paid in 0G testnet tokens)</option>
+          </select>
+          {generationProvider === "0g-compute" && (
+            <>
+              <select
+                value={zgComputeSelection}
+                onChange={(e) => setZgComputeSelection(e.target.value)}
+                style={{ marginTop: 6 }}
+              >
+                <option value="">{zgComputeProviders ? "Choose a provider/model…" : "Loading providers…"}</option>
+                {zgComputeProviders?.map((p) => (
+                  <option key={`${p.provider}|${p.model}`} value={`${p.provider}|${p.model}`}>
+                    {p.model} — {p.provider.slice(0, 10)}… ({p.verifiability})
+                  </option>
+                ))}
+              </select>
+              <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>
+                Runs on 0G's decentralized inference marketplace instead of Claude - a different (open-weight) model, paid from
+                your 0G Compute ledger balance rather than an Anthropic API key. Requires{" "}
+                <code>ZEROG_COMPUTE_PRIVATE_KEY</code> configured on dashboard-api, funded with 0G testnet ("Galileo") tokens.
+              </p>
+            </>
+          )}
         </div>
 
         <div className="form-field">
