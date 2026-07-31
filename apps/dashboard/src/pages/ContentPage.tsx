@@ -26,6 +26,24 @@ const VARIANT_LABELS: Record<string, string> = {
   "v2-source-grounded": "Source-grounded rules",
 };
 
+type SourceKind = "text" | "url" | "pdf" | "rss";
+const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
+  text: "Paste text",
+  url: "Website URL",
+  pdf: "Upload PDF",
+  rss: "RSS feed",
+};
+
+/// Base64-encodes a File's raw bytes for the /agents/:agentId/sources
+/// route's `pdfBase64` field - a plain fetch() body, not FormData, so
+/// dashboard-api needs no multipart-parsing middleware for this one route.
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 /// The "preview posts in the same page" surface: paste/point at a source,
 /// run all 3 required prompt variants, compare them side by side, and
 /// either approve the one that reads best (creating a real, price-able
@@ -34,8 +52,12 @@ export function ContentPage() {
   const { agentId } = useParams<{ agentId?: string }>();
   const { getAccessToken } = usePrivy();
   const [agent, setAgent] = useState<Agent | null>(null);
+  const [sourceKind, setSourceKind] = useState<SourceKind>("text");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [url, setUrl] = useState("");
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [feedUrl, setFeedUrl] = useState("");
   const [results, setResults] = useState<GenerationResult[]>([]);
   const [postsByGeneration, setPostsByGeneration] = useState<Record<string, Post>>({});
   const [busy, setBusy] = useState(false);
@@ -57,8 +79,15 @@ export function ContentPage() {
     })();
   }, [agentId, getAccessToken]);
 
+  // What counts as "ready to generate" differs per source type - content.ts's
+  // sourceInputFromBody picks the SourceInput variant from whichever of
+  // these fields is actually present, so this just mirrors that logic for
+  // the button's disabled state.
+  const canGenerate =
+    sourceKind === "text" ? Boolean(title && content) : sourceKind === "url" ? Boolean(url) : sourceKind === "pdf" ? Boolean(pdfFile) : Boolean(feedUrl);
+
   async function runPipeline() {
-    if (!agent) return;
+    if (!agent || !canGenerate) return;
     setBusy(true);
     setError(null);
     setResults([]);
@@ -72,9 +101,15 @@ export function ContentPage() {
         return;
       }
       const token = await getAccessToken();
-      const source = await apiFetch<ContentSource>(`/agents/${agent.id}/sources`, token!, {
-        json: { title, content },
-      });
+      const body =
+        sourceKind === "text"
+          ? { title, content }
+          : sourceKind === "url"
+            ? { url }
+            : sourceKind === "pdf"
+              ? { pdfBase64: await fileToBase64(pdfFile!), title: title || pdfFile!.name }
+              : { feedUrl };
+      const source = await apiFetch<ContentSource>(`/agents/${agent.id}/sources`, token!, { json: body });
       const generations = await apiFetch<GenerationResult[]>(`/sources/${source.id}/generate`, token!, { json: {} });
       setResults(generations);
     } catch (err) {
@@ -113,15 +148,58 @@ export function ContentPage() {
       {agent && (
         <>
           <div className="card" style={{ marginBottom: 20 }}>
-            <div className="form-field">
-              <label>Title</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Article title" />
+            <div className="pill-row" style={{ marginBottom: 16 }}>
+              {(Object.keys(SOURCE_KIND_LABELS) as SourceKind[]).map((kind) => (
+                <button
+                  key={kind}
+                  className={sourceKind === kind ? "btn btn-primary" : "btn btn-ghost"}
+                  onClick={() => setSourceKind(kind)}
+                  type="button"
+                >
+                  {SOURCE_KIND_LABELS[kind]}
+                </button>
+              ))}
             </div>
-            <div className="form-field">
-              <label>Article text</label>
-              <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Paste the article content here..." style={{ minHeight: 160 }} />
-            </div>
-            <button className="btn btn-primary" disabled={!title || !content || busy} onClick={runPipeline}>
+
+            {sourceKind === "text" && (
+              <>
+                <div className="form-field">
+                  <label>Title</label>
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Article title" />
+                </div>
+                <div className="form-field">
+                  <label>Article text</label>
+                  <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder="Paste the article content here..." style={{ minHeight: 160 }} />
+                </div>
+              </>
+            )}
+
+            {sourceKind === "url" && (
+              <div className="form-field">
+                <label>Website URL</label>
+                <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/article" />
+              </div>
+            )}
+
+            {sourceKind === "pdf" && (
+              <div className="form-field">
+                <label>PDF file</label>
+                <input type="file" accept="application/pdf" onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)} />
+                <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>
+                  Text is extracted directly from the PDF - scanned/image-only pages won't have extractable text.
+                </p>
+              </div>
+            )}
+
+            {sourceKind === "rss" && (
+              <div className="form-field">
+                <label>RSS/Atom feed URL</label>
+                <input value={feedUrl} onChange={(e) => setFeedUrl(e.target.value)} placeholder="https://example.com/feed.xml" />
+                <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>Ingests the feed's newest item.</p>
+              </div>
+            )}
+
+            <button className="btn btn-primary" disabled={!canGenerate || busy} onClick={runPipeline}>
               {busy ? "Generating…" : "Generate suggestions (3 variants)"}
             </button>
             {error && <p style={{ color: "#dc2626" }}>{error}</p>}

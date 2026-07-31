@@ -8,6 +8,8 @@ export type ImmutableSourceSnapshot = {
   retrievedAt: string;
   content: string;
   contentHash: string;
+  /// "text" | "url" | "pdf" | "rss" - how this snapshot was retrieved.
+  sourceType: string;
 };
 
 /// The author's tone/style profile used to steer generation.

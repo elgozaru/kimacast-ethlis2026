@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getDb } from "@kimacast/db";
 import type { AuthedRequest } from "../auth.js";
-import { buildSnapshot } from "../content/snapshot.js";
+import { buildSnapshot, type SourceInput } from "../content/snapshot.js";
 import { ZgStorageClient, hasSourceChanged } from "../storage/zgStorage.js";
 import { buildPrompt } from "../generation/promptBuilder.js";
 import { generate } from "../generation/claude.js";
@@ -17,16 +17,26 @@ async function assertOwnedAgent(agentId: string, creatorId: string) {
   return agent;
 }
 
-/// Ingests one source (URL or pasted text), snapshots it immutably, uploads
-/// it to 0G Storage, and - if a prior ContentSource exists for the same
-/// canonicalUrl with a different contentHash - flags that the agent's
-/// existing suggestions are stale (reevaluateOnHashChange).
+/// Picks the SourceInput variant from whichever fields the request body
+/// actually sent - the dashboard's ContentPage source-type tabs each send
+/// a distinct shape (url / pdfBase64 / feedUrl / plain title+content), and
+/// this is the one place that has to know all four.
+function sourceInputFromBody(body: any): SourceInput {
+  if (body.pdfBase64) return { kind: "pdf", pdfBase64: body.pdfBase64, title: body.title, author: body.author };
+  if (body.feedUrl) return { kind: "rss", feedUrl: body.feedUrl, itemUrl: body.itemUrl, author: body.author };
+  if (body.url) return { kind: "url", url: body.url, author: body.author };
+  return { kind: "text", title: body.title, content: body.content, author: body.author, canonicalUrl: body.canonicalUrl };
+}
+
+/// Ingests one source (pasted text, website URL, PDF upload, or RSS feed
+/// item), snapshots it immutably, uploads it to 0G Storage, and - if a
+/// prior ContentSource exists for the same canonicalUrl with a different
+/// contentHash - flags that the agent's existing suggestions are stale
+/// (reevaluateOnHashChange).
 contentRouter.post("/agents/:agentId/sources", async (req: AuthedRequest, res) => {
   try {
     const agent = await assertOwnedAgent(req.params.agentId, req.creatorId!);
-    const input = req.body.url
-      ? { kind: "url" as const, url: req.body.url, author: req.body.author }
-      : { kind: "text" as const, title: req.body.title, content: req.body.content, author: req.body.author, canonicalUrl: req.body.canonicalUrl };
+    const input = sourceInputFromBody(req.body);
 
     const snapshot = await buildSnapshot(input);
     const { rootHash, verified } = await storage.uploadAndVerify(snapshot.content);
@@ -46,6 +56,7 @@ contentRouter.post("/agents/:agentId/sources", async (req: AuthedRequest, res) =
         title: snapshot.title,
         content: snapshot.content,
         contentHash: snapshot.contentHash,
+        sourceType: snapshot.sourceType,
         storageUri: `0g://${rootHash}`,
         retrievedAt: new Date(snapshot.retrievedAt),
       },
