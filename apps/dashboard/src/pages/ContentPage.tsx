@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
 import { DEV_MODE } from "../lib/devMode";
-import { MOCK_AGENT, MOCK_GENERATIONS } from "../lib/mockData";
+import { MOCK_AGENTS, MOCK_GENERATIONS } from "../lib/mockData";
 
 type Agent = { id: string; name: string };
 type ContentSource = { id: string; title: string };
@@ -30,6 +31,7 @@ const VARIANT_LABELS: Record<string, string> = {
 /// either approve the one that reads best (creating a real, price-able
 /// Post) or go tweak the agent's tone settings and try again.
 export function ContentPage() {
+  const { agentId } = useParams<{ agentId?: string }>();
   const { getAccessToken } = usePrivy();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [title, setTitle] = useState("");
@@ -41,15 +43,19 @@ export function ContentPage() {
 
   useEffect(() => {
     if (DEV_MODE) {
-      setAgent(MOCK_AGENT);
+      setAgent((agentId ? MOCK_AGENTS.find((a) => a.id === agentId) : MOCK_AGENTS[0]) ?? null);
       return;
     }
     (async () => {
       const token = await getAccessToken();
-      const agents = await apiFetch<Agent[]>("/agents", token!);
-      setAgent(agents[0] ?? null);
+      if (agentId) {
+        setAgent(await apiFetch<Agent>(`/agents/${agentId}`, token!));
+      } else {
+        const agents = await apiFetch<Agent[]>("/agents", token!);
+        setAgent(agents[0] ?? null);
+      }
     })();
-  }, [getAccessToken]);
+  }, [agentId, getAccessToken]);
 
   async function runPipeline() {
     if (!agent) return;
