@@ -69,7 +69,14 @@ model ContentSource {
   canonicalUrl String?
   title        String
   content      String   @db.Text
-  contentHash  String   @unique
+  /// Unique per agent, not globally: two different agents legitimately
+  /// ingesting the same article (or the same agent resubmitting identical
+  /// text - e.g. re-testing a different generation provider against the
+  /// same source) must not collide. A bare @unique here previously caused
+  /// exactly that: any repeat of identical content anywhere in the table
+  /// hit a raw DB constraint error instead of the idempotent reuse the
+  /// route now does (see routes/content.ts).
+  contentHash  String
   /// "text" | "url" | "pdf" | "rss" - how this snapshot was retrieved.
   /// Display-only; content/contentHash are already kind-agnostic by the
   /// time they reach this row (see buildSnapshot in content/snapshot.ts).
@@ -80,6 +87,8 @@ model ContentSource {
   createdAt    DateTime @default(now())
 
   generationResults GenerationResult[]
+
+  @@unique([agentId, contentHash])
 }
 
 /// One run of the generation pipeline against a ContentSource - matches
