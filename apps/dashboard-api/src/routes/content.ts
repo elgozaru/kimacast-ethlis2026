@@ -195,14 +195,28 @@ contentRouter.get("/zg-compute/providers", async (_req: AuthedRequest, res) => {
   }
 });
 
+/// Each generation's status is derived, not stored on GenerationResult
+/// itself: "new" means no Post has been created from it yet; otherwise
+/// it's whatever that Post's own status is (approved/rejected/scheduled/
+/// published) - Post is already the one place that state lives (see
+/// routes/posts.ts), so this just surfaces it per-generation instead of
+/// duplicating a second status field that could drift out of sync.
 contentRouter.get("/agents/:agentId/generations", async (req: AuthedRequest, res) => {
   try {
     const agent = await assertOwnedAgent(req.params.agentId, req.creatorId!);
     const results = await getDb().generationResult.findMany({
       where: { agentId: agent.id },
       orderBy: { createdAt: "desc" },
+      include: { posts: { select: { id: true, status: true, scheduledFor: true } } },
     });
-    res.json(results);
+    res.json(
+      results.map(({ posts, ...result }) => ({
+        ...result,
+        status: posts[0]?.status ?? "new",
+        postId: posts[0]?.id ?? null,
+        scheduledFor: posts[0]?.scheduledFor ?? null,
+      })),
+    );
   } catch (err) {
     respondError(res, err);
   }

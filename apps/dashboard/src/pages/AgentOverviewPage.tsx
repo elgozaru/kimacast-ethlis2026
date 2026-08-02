@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
 import { DEV_MODE } from "../lib/devMode";
-import { MOCK_AGENTS, MOCK_PENDING_POST } from "../lib/mockData";
+import { MOCK_AGENTS, MOCK_METRICS, MOCK_PENDING_POST } from "../lib/mockData";
 
 type Agent = {
   id: string;
@@ -34,6 +34,7 @@ export function AgentOverviewPage() {
   const { getAccessToken } = usePrivy();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [pendingPost, setPendingPost] = useState<Post | null>(null);
+  const [metrics, setMetrics] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -42,6 +43,7 @@ export function AgentOverviewPage() {
       const selected = (agentId ? MOCK_AGENTS.find((a) => a.id === agentId) : MOCK_AGENTS[0]) ?? null;
       setAgent(selected);
       setPendingPost(selected ? MOCK_PENDING_POST : null);
+      setMetrics(selected ? MOCK_METRICS : null);
       setLoading(false);
       return;
     }
@@ -58,6 +60,7 @@ export function AgentOverviewPage() {
       if (selected) {
         const posts = await apiFetch<Post[]>(`/agents/${selected.id}/posts`, token!);
         setPendingPost(posts.find((p) => p.status === "pending") ?? null);
+        setMetrics(await apiFetch<Record<string, number>>(`/agents/${selected.id}/metrics`, token!));
       }
       setLoading(false);
     })();
@@ -140,6 +143,34 @@ export function AgentOverviewPage() {
           </div>
         </div>
       </div>
+
+      {metrics && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <h3 style={{ marginTop: 0 }}>Suggestion pipeline</h3>
+          <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: -8, marginBottom: 12 }}>
+            Every suggestion the generation pipeline has produced for this agent, by state. Revenue/paid-deliveries above
+            aren't wired to real Hedera settlement data yet - this counts generation/publish activity, not payments.
+          </p>
+          <div className="stat-grid">
+            <div className="stat-tile">
+              <div className="label">New</div>
+              <div className="value">{metrics.new ?? 0}</div>
+            </div>
+            <div className="stat-tile">
+              <div className="label">Approved</div>
+              <div className="value">{metrics.approved ?? 0}</div>
+            </div>
+            <div className="stat-tile">
+              <div className="label">Scheduled</div>
+              <div className="value">{metrics.scheduled ?? 0}</div>
+            </div>
+            <div className="stat-tile">
+              <div className="label">Published</div>
+              <div className="value">{metrics.published ?? 0}</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2">
         <div className="card">

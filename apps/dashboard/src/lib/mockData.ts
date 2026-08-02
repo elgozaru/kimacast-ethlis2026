@@ -124,6 +124,9 @@ export const MOCK_ZG_COMPUTE_PROVIDERS = [
   { provider: "0x3feE5a4dd5FDb8a32dEd97F80546a680c04C7fFB", model: "qwen2.5-72b-instruct", verifiability: "TeeML", inputPrice: "8", outputPrice: "25" },
 ];
 
+// Stands in for GET /agents/:agentId/metrics.
+export const MOCK_METRICS = { new: 2, pending: 0, approved: 1, rejected: 0, scheduled: 1, published: 3 };
+
 export const MOCK_PENDING_POST = {
   id: "dev-mock-post-1",
   status: "pending",

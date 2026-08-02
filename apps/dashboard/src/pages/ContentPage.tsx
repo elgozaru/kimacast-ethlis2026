@@ -27,7 +27,7 @@ type GenerationResult = {
     source_url: string;
   };
 };
-type Post = { id: string; status: string; teaser: string };
+type Post = { id: string; status: string; teaser: string; scheduledFor?: string | null };
 
 const VARIANT_LABELS: Record<string, string> = {
   "v1-generic": "Generic summarization",
@@ -70,6 +70,7 @@ export function ContentPage() {
   const [feedUrl, setFeedUrl] = useState("");
   const [results, setResults] = useState<GenerationResult[]>([]);
   const [postsByGeneration, setPostsByGeneration] = useState<Record<string, Post>>({});
+  const [scheduleInputs, setScheduleInputs] = useState<Record<string, string>>({});
   const [sources, setSources] = useState<SourceListItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,6 +183,43 @@ export function ContentPage() {
     const post = await apiFetch<Post>(`/generations/${generationId}/posts`, token!, { json: {} });
     const approved = await apiFetch<Post>(`/posts/${post.id}/approve`, token!, { json: {} });
     setPostsByGeneration((prev) => ({ ...prev, [generationId]: approved }));
+  }
+
+  async function publishNow(generationId: string) {
+    const post = postsByGeneration[generationId];
+    if (!post) return;
+    if (DEV_MODE) {
+      setPostsByGeneration((prev) => ({ ...prev, [generationId]: { ...post, status: "published" } }));
+      return;
+    }
+    const token = await getAccessToken();
+    const published = await apiFetch<Post>(`/posts/${post.id}/publish`, token!, { json: {} });
+    setPostsByGeneration((prev) => ({ ...prev, [generationId]: published }));
+  }
+
+  async function scheduleForLater(generationId: string) {
+    const post = postsByGeneration[generationId];
+    const scheduledFor = scheduleInputs[generationId];
+    if (!post || !scheduledFor) return;
+    if (DEV_MODE) {
+      setPostsByGeneration((prev) => ({ ...prev, [generationId]: { ...post, status: "scheduled", scheduledFor } }));
+      return;
+    }
+    const token = await getAccessToken();
+    const scheduled = await apiFetch<Post>(`/posts/${post.id}/schedule`, token!, { json: { scheduledFor } });
+    setPostsByGeneration((prev) => ({ ...prev, [generationId]: scheduled }));
+  }
+
+  async function unschedule(generationId: string) {
+    const post = postsByGeneration[generationId];
+    if (!post) return;
+    if (DEV_MODE) {
+      setPostsByGeneration((prev) => ({ ...prev, [generationId]: { ...post, status: "approved", scheduledFor: null } }));
+      return;
+    }
+    const token = await getAccessToken();
+    const updated = await apiFetch<Post>(`/posts/${post.id}/unschedule`, token!, { json: {} });
+    setPostsByGeneration((prev) => ({ ...prev, [generationId]: updated }));
   }
 
   return (
@@ -327,13 +365,53 @@ export function ContentPage() {
                       </>
                     )}
 
-                    {post ? (
-                      <p className="pill pill-green">Approved</p>
-                    ) : (
+                    {!post && (
                       <button className="btn btn-primary" onClick={() => createAndApprove(r.id)}>
                         Approve this suggestion
                       </button>
                     )}
+
+                    {post?.status === "approved" && (
+                      <div>
+                        <p className="pill pill-green" style={{ marginBottom: 8 }}>
+                          Approved
+                        </p>
+                        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                          <button className="btn btn-primary" onClick={() => publishNow(r.id)}>
+                            Publish now
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            type="datetime-local"
+                            value={scheduleInputs[r.id] ?? ""}
+                            onChange={(e) => setScheduleInputs((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                            style={{ flex: 1 }}
+                          />
+                          <button className="btn btn-ghost" disabled={!scheduleInputs[r.id]} onClick={() => scheduleForLater(r.id)}>
+                            Schedule
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {post?.status === "scheduled" && (
+                      <div>
+                        <p className="pill pill-orange" style={{ marginBottom: 8 }}>
+                          Scheduled for {post.scheduledFor ? new Date(post.scheduledFor).toLocaleString() : "?"}
+                        </p>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button className="btn btn-primary" onClick={() => publishNow(r.id)}>
+                            Publish now
+                          </button>
+                          <button className="btn btn-ghost" onClick={() => unschedule(r.id)}>
+                            Unschedule
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {post?.status === "published" && <p className="pill pill-green">Published</p>}
                   </div>
                 );
               })}

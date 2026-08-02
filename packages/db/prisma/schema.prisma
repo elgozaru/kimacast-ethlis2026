@@ -131,8 +131,13 @@ model Post {
   full               String            @db.Text
   priceTinybars      String
   sourceUrl          String
-  /// "pending" | "approved" | "rejected" | "published"
+  /// "pending" | "approved" | "rejected" | "scheduled" | "published"
   status             String            @default("pending")
+  /// Set together with status="scheduled" - the poller in
+  /// routes/posts.ts's runScheduledPublishes() publishes any post whose
+  /// scheduledFor has passed, flipping status to "published" the same way
+  /// a manual POST /posts/:postId/publish does.
+  scheduledFor       DateTime?
   publishedTweetId   String?
   /// Per-channel publish results keyed by channel name, e.g.
   /// { x: { id, posted }, telegram: { id, posted } } - one agent can be

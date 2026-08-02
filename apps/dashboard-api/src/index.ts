@@ -4,7 +4,7 @@ import express from "express";
 import { requireCreatorAuth } from "./auth.js";
 import { agentsRouter } from "./routes/agents.js";
 import { contentRouter } from "./routes/content.js";
-import { postsRouter } from "./routes/posts.js";
+import { postsRouter, runScheduledPublishes } from "./routes/posts.js";
 
 // Last-resort safety net: every route handler in routes/ wraps its own
 // logic in try/catch, but an unhandled rejection anywhere (a missed
@@ -30,3 +30,14 @@ app.use("/api", requireCreatorAuth, postsRouter);
 
 const port = Number(process.env.PORT ?? 4100);
 app.listen(port, () => console.log(`[dashboard-api] listening on :${port}`));
+
+// Polls for scheduled posts whose time has arrived - a plain setInterval
+// rather than a proper job queue since dashboard-api is a single
+// long-running process for this project's scope; each tick's failures are
+// caught inside runScheduledPublishes() itself so a bad post never stops
+// future ticks. 60s is frequent enough that "post later" never lags a
+// scheduled time by more than a minute, without hammering the DB.
+const SCHEDULED_PUBLISH_POLL_MS = 60_000;
+setInterval(() => {
+  runScheduledPublishes().catch((err) => console.error("[dashboard-api] runScheduledPublishes failed:", err));
+}, SCHEDULED_PUBLISH_POLL_MS);
