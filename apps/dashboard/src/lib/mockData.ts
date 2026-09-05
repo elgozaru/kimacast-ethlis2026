@@ -125,7 +125,41 @@ export const MOCK_ZG_COMPUTE_PROVIDERS = [
 ];
 
 // Stands in for GET /agents/:agentId/metrics.
-export const MOCK_METRICS = { new: 2, pending: 0, approved: 1, rejected: 0, scheduled: 1, published: 3 };
+export const MOCK_METRICS = { new: 2, pending: 0, approved: 1, rejected: 0, scheduled: 1, published: 3, failed: 0 };
+
+// Stands in for GET /social/connections - a creator with two X accounts
+// connected (so the "multiple connections per platform" picker has
+// something to show) and one Instagram connection whose expiry is close
+// enough to demonstrate the "expiring soon" pill.
+export const MOCK_SOCIAL_CONNECTIONS = [
+  {
+    id: "dev-mock-conn-x-1",
+    platform: "x",
+    platformUsername: "alice_tech",
+    expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "dev-mock-conn-x-2",
+    platform: "x",
+    platformUsername: "alice_press_desk",
+    expiresAt: new Date(Date.now() + 88 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: "dev-mock-conn-ig-1",
+    platform: "instagram",
+    platformUsername: "alice.technology",
+    expiresAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    createdAt: new Date(Date.now() - 55 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
+// Stands in for GET /agents/:agentId/default-connections.
+export const MOCK_DEFAULT_CONNECTIONS: Record<string, string> = {
+  x: "dev-mock-conn-x-1",
+  instagram: "dev-mock-conn-ig-1",
+};
 
 export const MOCK_PENDING_POST = {
   id: "dev-mock-post-1",

@@ -406,17 +406,45 @@ can be wired in one at a time:
      "Write Contract" tab) — this grants operator rights only, not
      ownership, and is revocable any time by calling it again with `false`.
 - **`X_API_KEY` / `_API_SECRET` / `X_ACCESS_TOKEN` / `_ACCESS_TOKEN_SECRET`**
-  — publishing an approved post to X. See `x-agent/README.md` for
-  credential setup and troubleshooting (401 vs 402 causes, App permission
-  gotchas). Without them, publish returns a dry-run result.
+  — platform-level fallback for publishing to X when a post's "x" channel
+  has no per-creator connection bound (see `X_OAUTH_CLIENT_ID` below for
+  the real per-creator path). See `x-agent/README.md` for credential setup
+  and troubleshooting (401 vs 402 causes, App permission gotchas). Without
+  either this or a bound connection, publish returns a dry-run result.
 - **`TELEGRAM_BOT_TOKEN`** (`social/telegram.ts`) — publishing to Telegram,
-  alongside X (`settings.socialChannels`, chosen in Onboarding). One bot
-  token for the whole platform, like the X credentials above; the
-  destination varies per agent (`settings.telegramChatId`), since the bot
-  has to be added as an admin to each target chat/channel. Facebook and
-  Instagram are NOT implemented — both need Meta App Review and a
-  per-creator OAuth flow, not just a static token; the dashboard shows
-  both as disabled "coming soon" options rather than silently failing.
+  alongside X/Instagram (`settings.socialChannels`, chosen in Onboarding).
+  One bot token for the whole platform; the destination varies per agent
+  (`settings.telegramChatId`), since the bot has to be added as an admin to
+  each target chat/channel. Telegram deliberately has no per-creator OAuth
+  connection - there's no such login for a bot to connect to.
+- **`SOCIAL_TOKEN_ENCRYPTION_KEY`** (`social/tokenCrypto.ts`) — a 32-byte
+  key (hex or base64; generate with `openssl rand -hex 32`) encrypting every
+  connected X/Instagram account's OAuth tokens at rest in `SocialConnection`
+  rows. Required as soon as any creator connects an account - encryption
+  errors out loudly rather than falling back to storing plaintext.
+- **`X_OAUTH_CLIENT_ID` / `X_OAUTH_CLIENT_SECRET`** (`social/xOauth.ts`) —
+  a creator connecting their own X account from the dashboard's
+  Connections page (OAuth 2.0 + PKCE, `tweet.write` scope), as opposed to
+  the platform-level `X_API_KEY` etc. above. From the X Developer Portal,
+  register an OAuth 2.0 app with callback URL
+  `<DASHBOARD_API_ORIGIN>/api/social/x/callback`.
+- **`META_APP_ID` / `META_APP_SECRET`** (`social/instagramOauth.ts`) — a
+  creator connecting Instagram via Facebook Login for Business. The
+  connected identity is actually a Facebook Page with a linked Instagram
+  *professional* (Business or Creator) account - a personal Instagram
+  account has no publish API at all, with no supported bypass; the creator
+  converts for free in the Instagram app (Settings → Account type) and
+  links a Page before connecting here. Callback URL:
+  `<DASHBOARD_API_ORIGIN>/api/social/instagram/callback`. Note: Instagram's
+  Content Publishing API has no text-only post type (every post needs an
+  `image_url`) - this pipeline doesn't attach an image to generated posts
+  yet, so Instagram publishes will fail with a clear error until that
+  exists; the OAuth connection flow and Graph API calls are otherwise real.
+- **`DASHBOARD_API_ORIGIN`** — this service's own externally-reachable
+  origin (e.g. `http://localhost:4100` locally), used to build the two
+  OAuth callback URLs above. **`DASHBOARD_APP_ORIGIN`** — the dashboard
+  frontend's origin (`http://localhost:3010` locally), where the OAuth
+  callback redirects the browser back to after connecting.
 
 ### Why not story402's or x-agent's payment/storage stack directly?
 

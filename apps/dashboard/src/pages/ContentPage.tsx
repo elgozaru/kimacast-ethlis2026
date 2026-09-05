@@ -3,9 +3,14 @@ import { useParams } from "react-router-dom";
 import { usePrivy } from "@privy-io/react-auth";
 import { apiFetch } from "../lib/api";
 import { DEV_MODE } from "../lib/devMode";
-import { MOCK_AGENTS, MOCK_GENERATIONS, MOCK_SOURCES } from "../lib/mockData";
+import { MOCK_AGENTS, MOCK_DEFAULT_CONNECTIONS, MOCK_GENERATIONS, MOCK_SOCIAL_CONNECTIONS, MOCK_SOURCES } from "../lib/mockData";
 
 type Agent = { id: string; name: string };
+type Connection = { id: string; platform: string; platformUsername: string };
+/// Platforms a connection can be picked for - Telegram stays on the
+/// bot-admin model (agent.settings.telegramChatId), no connection to pick.
+const CONNECTABLE_PLATFORMS = ["x", "instagram"] as const;
+const PLATFORM_LABELS: Record<string, string> = { x: "X", instagram: "Instagram" };
 type ContentSource = { id: string; title: string };
 type SourceListItem = {
   id: string;
@@ -72,6 +77,10 @@ export function ContentPage() {
   const [postsByGeneration, setPostsByGeneration] = useState<Record<string, Post>>({});
   const [scheduleInputs, setScheduleInputs] = useState<Record<string, string>>({});
   const [sources, setSources] = useState<SourceListItem[] | null>(null);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [defaultConnections, setDefaultConnections] = useState<Record<string, string>>({});
+  const [channelSelections, setChannelSelections] = useState<Record<string, Record<string, string>>>({});
+  const [scheduleWarnings, setScheduleWarnings] = useState<Record<string, { channel: string; message: string }[]>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,11 +93,34 @@ export function ContentPage() {
     setSources(await apiFetch<SourceListItem[]>(`/agents/${currentAgentId}/sources`, token!));
   }
 
+  /// Every connected X/Instagram account (so the per-post picker below has
+  /// options), and this agent's derived per-channel default (see
+  /// social/connectionDefaults.ts) - "the latest one used", falling back to
+  /// the creator's most-recently-connected account if this agent has never
+  /// published on that platform yet.
+  async function loadConnections(currentAgentId: string) {
+    if (DEV_MODE) {
+      setConnections(MOCK_SOCIAL_CONNECTIONS);
+      setDefaultConnections(MOCK_DEFAULT_CONNECTIONS);
+      return;
+    }
+    const token = await getAccessToken();
+    const [allConnections, defaults] = await Promise.all([
+      apiFetch<Connection[]>("/social/connections", token!),
+      apiFetch<Record<string, string>>(`/agents/${currentAgentId}/default-connections`, token!),
+    ]);
+    setConnections(allConnections);
+    setDefaultConnections(defaults);
+  }
+
   useEffect(() => {
     if (DEV_MODE) {
       const selected = (agentId ? MOCK_AGENTS.find((a) => a.id === agentId) : MOCK_AGENTS[0]) ?? null;
       setAgent(selected);
-      if (selected) loadSources(selected.id);
+      if (selected) {
+        loadSources(selected.id);
+        loadConnections(selected.id);
+      }
       return;
     }
     (async () => {
@@ -97,10 +129,30 @@ export function ContentPage() {
         ? await apiFetch<Agent>(`/agents/${agentId}`, token!)
         : (await apiFetch<Agent[]>("/agents", token!))[0] ?? null;
       setAgent(selected);
-      if (selected) loadSources(selected.id);
+      if (selected) {
+        loadSources(selected.id);
+        loadConnections(selected.id);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId, getAccessToken]);
+
+  /// The connection to use for one generation's channel right now: the
+  /// creator's explicit pick for this suggestion if they changed it,
+  /// otherwise this agent's derived default - editable up until the moment
+  /// Publish/Schedule is actually clicked (see resolvedConnections below).
+  function selectedConnectionFor(generationId: string, platform: string): string {
+    return channelSelections[generationId]?.[platform] ?? defaultConnections[platform] ?? "";
+  }
+
+  function resolvedConnections(generationId: string): Record<string, string> {
+    const picked: Record<string, string> = {};
+    for (const platform of CONNECTABLE_PLATFORMS) {
+      const value = selectedConnectionFor(generationId, platform);
+      if (value) picked[platform] = value;
+    }
+    return picked;
+  }
 
   // What counts as "ready to generate" differs per source type - content.ts's
   // sourceInputFromBody picks the SourceInput variant from whichever of
@@ -193,7 +245,11 @@ export function ContentPage() {
       return;
     }
     const token = await getAccessToken();
-    const published = await apiFetch<Post>(`/posts/${post.id}/publish`, token!, { json: {} });
+    // Ignored server-side if this post was already bound at schedule time -
+    // see routes/posts.ts's getOrCreatePublications.
+    const published = await apiFetch<Post>(`/posts/${post.id}/publish`, token!, {
+      json: { connections: resolvedConnections(generationId) },
+    });
     setPostsByGeneration((prev) => ({ ...prev, [generationId]: published }));
   }
 
@@ -206,13 +262,19 @@ export function ContentPage() {
       return;
     }
     const token = await getAccessToken();
-    const scheduled = await apiFetch<Post>(`/posts/${post.id}/schedule`, token!, { json: { scheduledFor } });
+    const scheduled = await apiFetch<Post & { warnings?: { channel: string; message: string }[] }>(
+      `/posts/${post.id}/schedule`,
+      token!,
+      { json: { scheduledFor, connections: resolvedConnections(generationId) } },
+    );
     setPostsByGeneration((prev) => ({ ...prev, [generationId]: scheduled }));
+    setScheduleWarnings((prev) => ({ ...prev, [generationId]: scheduled.warnings ?? [] }));
   }
 
   async function unschedule(generationId: string) {
     const post = postsByGeneration[generationId];
     if (!post) return;
+    setScheduleWarnings((prev) => ({ ...prev, [generationId]: [] }));
     if (DEV_MODE) {
       setPostsByGeneration((prev) => ({ ...prev, [generationId]: { ...post, status: "approved", scheduledFor: null } }));
       return;
@@ -376,6 +438,30 @@ export function ContentPage() {
                         <p className="pill pill-green" style={{ marginBottom: 8 }}>
                           Approved
                         </p>
+                        {CONNECTABLE_PLATFORMS.filter((platform) => connections.some((c) => c.platform === platform)).map(
+                          (platform) => (
+                            <div className="form-field" key={platform} style={{ marginBottom: 8 }}>
+                              <label>{PLATFORM_LABELS[platform]} account</label>
+                              <select
+                                value={selectedConnectionFor(r.id, platform)}
+                                onChange={(e) =>
+                                  setChannelSelections((prev) => ({
+                                    ...prev,
+                                    [r.id]: { ...prev[r.id], [platform]: e.target.value },
+                                  }))
+                                }
+                              >
+                                {connections
+                                  .filter((c) => c.platform === platform)
+                                  .map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      @{c.platformUsername}
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                          ),
+                        )}
                         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                           <button className="btn btn-primary" onClick={() => publishNow(r.id)}>
                             Publish now
@@ -400,6 +486,11 @@ export function ContentPage() {
                         <p className="pill pill-orange" style={{ marginBottom: 8 }}>
                           Scheduled for {post.scheduledFor ? new Date(post.scheduledFor).toLocaleString() : "?"}
                         </p>
+                        {(scheduleWarnings[r.id] ?? []).map((w, i) => (
+                          <p key={i} style={{ color: "#c2410c", fontSize: 13, marginTop: 0 }}>
+                            ⚠ {w.message}
+                          </p>
+                        ))}
                         <div style={{ display: "flex", gap: 8 }}>
                           <button className="btn btn-primary" onClick={() => publishNow(r.id)}>
                             Publish now
@@ -412,6 +503,20 @@ export function ContentPage() {
                     )}
 
                     {post?.status === "published" && <p className="pill pill-green">Published</p>}
+                    {post?.status === "failed" && (
+                      <div>
+                        <p className="pill pill-red" style={{ marginBottom: 8 }}>
+                          Publish failed
+                        </p>
+                        <p style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 0 }}>
+                          Every channel failed to publish - often an expired connection. Check{" "}
+                          <a href="/connections">Connections</a> and try again.
+                        </p>
+                        <button className="btn btn-primary" onClick={() => publishNow(r.id)}>
+                          Retry
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

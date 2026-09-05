@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { to: "/", label: "Overview", end: true },
   { to: "/agents", label: "My agents" },
   { to: "/content", label: "Content" },
+  { to: "/connections", label: "Connections" },
   { to: "/sales", label: "Sales" },
   { to: "/campaigns", label: "Campaigns" },
   { to: "/settings", label: "Settings" },

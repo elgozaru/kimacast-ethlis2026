@@ -5,6 +5,7 @@ import { requireCreatorAuth } from "./auth.js";
 import { agentsRouter } from "./routes/agents.js";
 import { contentRouter } from "./routes/content.js";
 import { postsRouter, runScheduledPublishes } from "./routes/posts.js";
+import { socialConnectionsRouter, socialOauthCallbackRouter } from "./routes/socialConnections.js";
 
 // Last-resort safety net: every route handler in routes/ wraps its own
 // logic in try/catch, but an unhandled rejection anywhere (a missed
@@ -27,6 +28,11 @@ app.use(express.json({ limit: "20mb" })); // base64-encoded PDF uploads (see rou
 app.use("/api", requireCreatorAuth, agentsRouter);
 app.use("/api", requireCreatorAuth, contentRouter);
 app.use("/api", requireCreatorAuth, postsRouter);
+app.use("/api", requireCreatorAuth, socialConnectionsRouter);
+// Unauthenticated: the browser lands here directly via redirect from
+// X/Meta's OAuth consent screen, with no Bearer token to verify (see
+// socialConnections.ts's socialOauthCallbackRouter comment).
+app.use("/api", socialOauthCallbackRouter);
 
 const port = Number(process.env.PORT ?? 4100);
 app.listen(port, () => console.log(`[dashboard-api] listening on :${port}`));

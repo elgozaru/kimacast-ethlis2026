@@ -131,21 +131,95 @@ model Post {
   full               String            @db.Text
   priceTinybars      String
   sourceUrl          String
-  /// "pending" | "approved" | "rejected" | "scheduled" | "published"
+  /// "pending" | "approved" | "rejected" | "scheduled" | "published" | "failed"
+  /// "failed" means the poller (or a manual publish) ran but every bound
+  /// channel came back unpublished (e.g. every connection had expired by
+  /// fire time) - see PostPublication for the real per-channel outcome;
+  /// this field is just the aggregate signal that something needs the
+  /// creator's attention.
   status             String            @default("pending")
   /// Set together with status="scheduled" - the poller in
   /// routes/posts.ts's runScheduledPublishes() publishes any post whose
-  /// scheduledFor has passed, flipping status to "published" the same way
-  /// a manual POST /posts/:postId/publish does.
+  /// scheduledFor has passed, flipping status to "published" (or "failed")
+  /// the same way a manual POST /posts/:postId/publish does.
   scheduledFor       DateTime?
-  publishedTweetId   String?
-  /// Per-channel publish results keyed by channel name, e.g.
-  /// { x: { id, posted }, telegram: { id, posted } } - one agent can be
-  /// configured (via Agent.settings.socialChannels) to publish to more
-  /// than one platform per post. publishedTweetId above is kept
-  /// specifically for X/backward compatibility with anything reading it
-  /// directly; this is the general form.
-  publishResults     Json?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
+
+  publications PostPublication[]
+}
+
+/// One creator's connected social account - independent of any agent.
+/// A creator can hold several connections for the same platform (e.g. two
+/// X accounts); which one an agent actually posts through is decided per
+/// publish/schedule action (see PostPublication), not fixed here or on
+/// Agent.settings. creatorId is a Privy DID string, same convention as
+/// Agent.creatorId - there's no separate Creator table to relate to.
+model SocialConnection {
+  id                 String    @id @default(cuid())
+  creatorId          String
+  /// "x" | "instagram" - Telegram deliberately has no SocialConnection: it
+  /// stays on the bot-admin model (one platform bot token, a per-agent
+  /// destination chat id), since there's no per-creator OAuth login for a
+  /// Telegram bot to connect to.
+  platform           String
+  platformUserId     String
+  platformUsername   String
+  /// AES-256-GCM ciphertext (see social/tokenCrypto.ts) - never the raw
+  /// token. Nothing reading this table should ever return these fields to
+  /// the dashboard UI.
+  accessTokenEnc     String
+  refreshTokenEnc    String?
+  expiresAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  publications PostPublication[]
+
+  @@unique([creatorId, platform, platformUserId])
+}
+
+/// One channel's publish target + outcome for one Post, bound at the
+/// moment the creator takes the publish/schedule action - NOT re-resolved
+/// later, so a creator reconnecting or revoking an account between
+/// scheduling and the scheduled time can't silently change which account a
+/// queued post goes out under (see routes/posts.ts's runScheduledPublishes).
+/// agentId is denormalized from post.agentId purely so "most recently used
+/// connection for this agent+channel" (the schedule/publish UI's default)
+/// is a single indexed query instead of a join through Post every time.
+model PostPublication {
+  id                 String            @id @default(cuid())
+  postId             String
+  post               Post              @relation(fields: [postId], references: [id])
+  agentId            String
+  /// "x" | "telegram" | "instagram"
+  channel            String
+  /// Null for Telegram (bot-admin model, no per-creator connection to bind).
+  socialConnectionId String?
+  socialConnection   SocialConnection? @relation(fields: [socialConnectionId], references: [id])
+  /// "pending" | "published" | "failed"
+  status             String            @default("pending")
+  platformPostId     String?
+  errorMessage       String?
+  publishedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([agentId, channel, publishedAt])
+}
+
+/// Short-lived server-side record bridging GET /social/:platform/connect
+/// (authenticated - knows creatorId, generates this row) and GET
+/// /social/:platform/callback (unauthenticated - it's a browser redirect
+/// from X/Meta, no Bearer token available, so creatorId + the OAuth 2.0
+/// PKCE code_verifier have to be recovered from somewhere keyed only by
+/// the `state` value the platform hands back). Deleted once consumed by
+/// the callback; a row that's never consumed (abandoned login) just goes
+/// stale and is harmless to leave - no cleanup job for this iteration.
+model OAuthState {
+  state        String   @id
+  creatorId    String
+  platform     String
+  codeVerifier String
+  createdAt    DateTime @default(now())
 }

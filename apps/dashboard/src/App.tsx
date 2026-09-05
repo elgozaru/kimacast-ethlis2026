@@ -6,6 +6,7 @@ import { AgentOverviewPage } from "./pages/AgentOverviewPage";
 import { AgentsListPage } from "./pages/AgentsListPage";
 import { AgentSettingsPage } from "./pages/AgentSettingsPage";
 import { ContentPage } from "./pages/ContentPage";
+import { SocialConnectionsPage } from "./pages/SocialConnectionsPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { DEV_MODE } from "./lib/devMode";
 
@@ -42,6 +43,7 @@ export function App() {
           <Route path="/agents/:agentId" element={<AgentOverviewPage />} />
           <Route path="/agents/:agentId/content" element={<ContentPage />} />
           <Route path="/agents/:agentId/settings" element={<AgentSettingsPage />} />
+          <Route path="/connections" element={<SocialConnectionsPage />} />
           <Route path="/sales" element={<PlaceholderPage title="Sales" />} />
           <Route path="/campaigns" element={<PlaceholderPage title="Campaigns" />} />
           <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
